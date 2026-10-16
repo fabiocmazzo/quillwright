@@ -1,0 +1,30 @@
+[package]
+name = "md-echo"
+version = "0.1.1"
+edition = "2021"
+description = "Minimalist dual-pane Markdown editor & real time preview built with egui and eframe"
+license = "MIT"
+repository = "https://github.com/fibnas/md-echo"
+categories = ["command-line-utilities"]
+keywords = ["editor", "tui", "organization", "productivity", "markdown"]
+readme = "README.md"
+exclude = ["target/", "entries.json", "screenshots/"]
+
+[dependencies]
+eframe          = "0.27"
+egui            = "0.27"
+egui_extras     = { version = "0.27", features = ["image"] }
+egui_commonmark = "0.15"
+rfd             = "0.11"
+syntect         = "5"
+directories     = "5.0"
+serde           = { version = "1.0", features = ["derive"] }
+toml            = "0.8"
+tempfile        = "3"
+
+[[bin]]
+name = "md-echo"
+path = "src/main.rs"
+
+[patch.crates-io]
+egui_commonmark = { path = "crates/egui_commonmark" }
