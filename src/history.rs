@@ -40,10 +40,19 @@ pub fn folder(root: &Path, file: &Path) -> PathBuf {
         .unwrap_or_default();
     let safe: String = stem
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .take(40)
         .collect();
-    root.join(format!("{safe}-{:016x}", fnv1a(file.to_string_lossy().as_bytes())))
+    root.join(format!(
+        "{safe}-{:016x}",
+        fnv1a(file.to_string_lossy().as_bytes())
+    ))
 }
 
 /// Copies of `file`, newest first.
@@ -74,7 +83,13 @@ pub fn list(root: &Path, file: &Path) -> Vec<Snapshot> {
 /// Skips empty text and text identical to the newest copy. Unless `force` is set,
 /// also skips when the newest copy is more recent than [`INTERVAL`].
 /// Returns whether a copy was written.
-pub fn record(root: &Path, file: &Path, text: &str, force: bool, now: SystemTime) -> io::Result<bool> {
+pub fn record(
+    root: &Path,
+    file: &Path,
+    text: &str,
+    force: bool,
+    now: SystemTime,
+) -> io::Result<bool> {
     if text.trim().is_empty() {
         return Ok(false);
     }
@@ -96,7 +111,10 @@ pub fn record(root: &Path, file: &Path, text: &str, force: bool, now: SystemTime
     if !source.exists() {
         fs::write(&source, format!("{}\n", file.display()))?;
     }
-    let mut millis = now.duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+    let mut millis = now
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
     // Never reuse a name, even for two copies in the same millisecond.
     if let Some(latest) = existing.first() {
         let latest_millis = latest

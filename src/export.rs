@@ -144,12 +144,7 @@ fn starts_with_chapter_heading(text: &str) -> bool {
 }
 
 /// Pandoc arguments. The manuscript is read from stdin.
-pub fn arguments(
-    options: &Options,
-    output: &Path,
-    filter: &Path,
-    project: &Path,
-) -> Vec<String> {
+pub fn arguments(options: &Options, output: &Path, filter: &Path, project: &Path) -> Vec<String> {
     let mut args: Vec<String> = vec![
         // CommonMark like the editor, with smart quotes, footnotes, and tables.
         // YAML blocks are off: a "---" scene break must never start one.
@@ -209,13 +204,10 @@ pub fn arguments(
 pub fn pandoc_version(pandoc: &str) -> Option<String> {
     let output = Command::new(pandoc).arg("--version").output().ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
-    output.status.success().then(|| {
-        text.lines()
-            .next()
-            .unwrap_or("pandoc")
-            .trim()
-            .to_string()
-    })
+    output
+        .status
+        .success()
+        .then(|| text.lines().next().unwrap_or("pandoc").trim().to_string())
 }
 
 /// PDF engines installed on this machine, best first.
@@ -263,7 +255,11 @@ pub fn default_file_name(title: &str, format: Format) -> String {
         .filter(|c| !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
         .collect();
     let clean = clean.trim();
-    let stem = if clean.is_empty() { "manuscript" } else { clean };
+    let stem = if clean.is_empty() {
+        "manuscript"
+    } else {
+        clean
+    };
     format!("{stem}.{}", format.extension())
 }
 
@@ -331,7 +327,12 @@ mod tests {
             table_of_contents: true,
             pdf_engine: Some("typst".into()),
         };
-        let args = arguments(&options, Path::new("/out/book.docx"), Path::new("/f.lua"), project.path());
+        let args = arguments(
+            &options,
+            Path::new("/out/book.docx"),
+            Path::new("/f.lua"),
+            project.path(),
+        );
         assert!(args.contains(&"--output=/out/book.docx".to_string()));
         assert!(args.contains(&"--metadata=title:The Salt Road".to_string()));
         assert!(!args.iter().any(|a| a.starts_with("--metadata=author")));
@@ -345,14 +346,22 @@ mod tests {
             format: Format::Pdf,
             ..options
         };
-        let args = arguments(&pdf, Path::new("/out/book.pdf"), Path::new("/f.lua"), project.path());
+        let args = arguments(
+            &pdf,
+            Path::new("/out/book.pdf"),
+            Path::new("/f.lua"),
+            project.path(),
+        );
         assert!(args.contains(&"--pdf-engine=typst".to_string()));
         assert!(!args.iter().any(|a| a.starts_with("--reference-doc=")));
     }
 
     #[test]
     fn names() {
-        assert_eq!(title_from_folder(Path::new("/x/the-salt-road")), "The Salt Road");
+        assert_eq!(
+            title_from_folder(Path::new("/x/the-salt-road")),
+            "The Salt Road"
+        );
         assert_eq!(default_file_name("A: B/C?", Format::Epub), "A BC.epub");
         assert_eq!(default_file_name("  ", Format::Pdf), "manuscript.pdf");
     }

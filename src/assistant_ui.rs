@@ -5,7 +5,9 @@ use crate::{
     fonts, manuscript, theme, MarkdownApp,
 };
 use eframe::egui;
-use egui::{text::LayoutJob, Align, Button, Context, FontId, Layout, RichText, Stroke, TextFormat, Ui};
+use egui::{
+    text::LayoutJob, Align, Button, Context, FontId, Layout, RichText, Stroke, TextFormat, Ui,
+};
 
 #[derive(Default)]
 pub struct AssistantState {
@@ -96,7 +98,12 @@ impl MarkdownApp {
 
     /// Start a request. Public so menus and shortcuts can trigger actions directly.
     pub(crate) fn send_assistant(&mut self, ctx: &Context, action: Action) {
-        let Some(command) = self.config.assistant.command.clone().filter(|c| !c.is_empty())
+        let Some(command) = self
+            .config
+            .assistant
+            .command
+            .clone()
+            .filter(|c| !c.is_empty())
         else {
             self.open_assistant_settings();
             return;
@@ -138,8 +145,12 @@ impl MarkdownApp {
         state.error = None;
         state.details.clear();
         state.prompt = prompt.clone();
-        match assistant::Job::start(&self.config.assistant, &self.working_dir, prompt, ctx.clone())
-        {
+        match assistant::Job::start(
+            &self.config.assistant,
+            &self.working_dir,
+            prompt,
+            ctx.clone(),
+        ) {
             Ok(job) => {
                 state.job = Some(job);
                 if request.action == Action::Ask {
@@ -181,7 +192,11 @@ impl MarkdownApp {
                         if quiet(ui, "Close", &p).clicked() {
                             action = Some(PanelAction::Close);
                         }
-                        let label = if self.assistant.show_settings { "Done" } else { "Settings" };
+                        let label = if self.assistant.show_settings {
+                            "Done"
+                        } else {
+                            "Settings"
+                        };
                         if quiet(ui, label, &p).clicked() {
                             let state = &mut self.assistant;
                             state.show_settings = !state.show_settings;
@@ -208,7 +223,12 @@ impl MarkdownApp {
         }
     }
 
-    fn assistant_settings(&mut self, ui: &mut Ui, p: &theme::Palette, action: &mut Option<PanelAction>) {
+    fn assistant_settings(
+        &mut self,
+        ui: &mut Ui,
+        p: &theme::Palette,
+        action: &mut Option<PanelAction>,
+    ) {
         let state = &mut self.assistant;
         if state.command_line.is_empty() {
             if let Some(command) = &self.config.assistant.command {
@@ -259,7 +279,12 @@ impl MarkdownApp {
         }
     }
 
-    fn assistant_body(&mut self, ui: &mut Ui, p: &theme::Palette, action: &mut Option<PanelAction>) {
+    fn assistant_body(
+        &mut self,
+        ui: &mut Ui,
+        p: &theme::Palette,
+        action: &mut Option<PanelAction>,
+    ) {
         if self.file_path.is_none() && self.content.trim().is_empty() {
             muted(ui, "Open a chapter to work with the assistant.", p);
             return;
@@ -285,8 +310,16 @@ impl MarkdownApp {
             let actions = [
                 (0, Action::Rewrite, "Rewrite the selected passage"),
                 (1, Action::Continue, "Write what comes next at the cursor"),
-                (0, Action::Alternatives, "Three different versions of the selection"),
-                (1, Action::Continuity, "Review this chapter against the canon"),
+                (
+                    0,
+                    Action::Alternatives,
+                    "Three different versions of the selection",
+                ),
+                (
+                    1,
+                    Action::Continuity,
+                    "Review this chapter against the canon",
+                ),
             ];
             for (col, act, tip) in actions {
                 let enabled = !running && (!act.needs_selection() || has_selection);
@@ -312,7 +345,9 @@ impl MarkdownApp {
         ui.add_space(6.0);
         let response = ui.add(
             egui::TextEdit::multiline(&mut self.assistant.instruction)
-                .hint_text("Ask anything, or guide the buttons above (“more tension, shorter sentences”)")
+                .hint_text(
+                    "Ask anything, or guide the buttons above (“more tension, shorter sentences”)",
+                )
                 .desired_rows(3)
                 .desired_width(f32::INFINITY),
         );
@@ -451,12 +486,18 @@ impl MarkdownApp {
             let can_replace = same_file && request.start != request.end;
             match kind {
                 ResultKind::Replacement => {
-                    if ui.add_enabled(can_replace, primary("Replace selection")).clicked() {
+                    if ui
+                        .add_enabled(can_replace, primary("Replace selection"))
+                        .clicked()
+                    {
                         *action = Some(PanelAction::Replace);
                     }
                 }
                 ResultKind::Insertion => {
-                    if ui.add_enabled(same_file, primary("Insert at cursor")).clicked() {
+                    if ui
+                        .add_enabled(same_file, primary("Insert at cursor"))
+                        .clicked()
+                    {
                         *action = Some(PanelAction::Insert);
                     }
                 }
@@ -481,7 +522,11 @@ impl MarkdownApp {
             }
         });
         if !same_file {
-            muted(ui, "This answer is for another file; open it again to apply.", p);
+            muted(
+                ui,
+                "This answer is for another file; open it again to apply.",
+                p,
+            );
         }
     }
 
@@ -502,9 +547,10 @@ impl MarkdownApp {
                 }
             }
             PanelAction::Replace => {
-                let (Some(result), Some(request)) =
-                    (self.assistant.result.clone(), self.assistant.request.clone())
-                else {
+                let (Some(result), Some(request)) = (
+                    self.assistant.result.clone(),
+                    self.assistant.request.clone(),
+                ) else {
                     return;
                 };
                 match assistant::apply_replacement(&mut self.content, &request, &result) {
@@ -559,7 +605,12 @@ fn muted(ui: &mut Ui, text: &str, p: &theme::Palette) {
 
 fn heading(ui: &mut Ui, text: &str, p: &theme::Palette) {
     ui.add_space(4.0);
-    ui.label(RichText::new(text.to_uppercase()).size(11.0).strong().color(p.muted));
+    ui.label(
+        RichText::new(text.to_uppercase())
+            .size(11.0)
+            .strong()
+            .color(p.muted),
+    );
 }
 
 /// Word-level diff: removed words struck through, new words in the accent color.

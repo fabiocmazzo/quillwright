@@ -43,7 +43,7 @@ pub fn group(n: usize) -> String {
     let digits = n.to_string();
     let mut out = String::new();
     for (i, ch) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i) % 3 == 0 {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
             out.push(',');
         }
         out.push(ch);
@@ -279,7 +279,10 @@ mod tests {
         let path = Path::new("chapters/002-the-crossing.md");
         assert_eq!(title("# The Crossing ##\ntext", path), "The Crossing");
         assert_eq!(title("no heading", path), "The Crossing");
-        assert_eq!(title("#hashtag", Path::new("x/maria_silva.md")), "Maria Silva");
+        assert_eq!(
+            title("#hashtag", Path::new("x/maria_silva.md")),
+            "Maria Silva"
+        );
         assert_eq!(group(0), "0");
         assert_eq!(group(1234567), "1,234,567");
         assert_eq!(reading_minutes(1), 1);

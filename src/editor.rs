@@ -125,7 +125,7 @@ impl Editor {
         }
     }
 
-    fn from_display(&mut self, range: CursorRange, projection: &Projection) {
+    fn set_from_display(&mut self, range: CursorRange, projection: &Projection) {
         self.selection = CCursorRange {
             primary: CCursor::new(projection.to_source(range.primary.ccursor.index)),
             secondary: CCursor::new(projection.to_source(range.secondary.ccursor.index)),
@@ -210,7 +210,7 @@ impl Editor {
                 let cursor = galley.cursor_from_pos(pos - origin);
                 let mut state = TextCursorState::from(self.displayed(&projection, &galley));
                 if state.pointer_interaction(ui, &response, cursor, &galley, response.dragged()) {
-                    self.from_display(state.range(&galley).unwrap(), &projection);
+                    self.set_from_display(state.range(&galley).unwrap(), &projection);
                     self.preferred_x = None;
                     self.composition = None;
                     response.request_focus();
@@ -462,7 +462,7 @@ impl Editor {
             if !modifiers.shift {
                 range.secondary = range.primary;
             }
-            self.from_display(range, &projection);
+            self.set_from_display(range, &projection);
         } else {
             self.preferred_x = None;
             // Horizontal/word movement and deletion operate on the source. The

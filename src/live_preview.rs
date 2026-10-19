@@ -155,7 +155,9 @@ pub fn project(ui: &Ui, source: &str, width: f32, selection: Option<(usize, usiz
         .ctx()
         .data(|d| d.get_temp::<bool>(egui::Id::new("editor_dim")))
         .unwrap_or(false);
-    let focus = selection.filter(|_| dim).map(|(primary, _)| paragraph(source, primary));
+    let focus = selection
+        .filter(|_| dim)
+        .map(|(primary, _)| paragraph(source, primary));
     let mut job = LayoutJob::default();
     job.wrap.max_width = width;
     let mut source_offsets = Vec::new();

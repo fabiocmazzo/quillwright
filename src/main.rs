@@ -6,14 +6,14 @@ mod assistant_ui;
 mod editor;
 mod export;
 mod export_ui;
-mod manuscript;
-mod theme;
 mod file_sync;
 mod fonts;
 mod history;
 mod live_preview;
+mod manuscript;
 mod project;
 mod saving;
+mod theme;
 mod workspace;
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
@@ -162,6 +162,7 @@ impl DiscardAction {
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 struct AppConfig {
     working_dir: Option<PathBuf>,
     theme: ThemeConfig,
@@ -187,21 +188,6 @@ impl Default for ViewConfig {
         Self {
             sidebar: true,
             session_goal: 0,
-        }
-    }
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            working_dir: None,
-            theme: ThemeConfig::default(),
-            tools: ToolsConfig::default(),
-            editor: editor::EditorConfig::default(),
-            view: ViewConfig::default(),
-            assistant: assistant::AssistantConfig::default(),
-            export: export::ExportConfig::default(),
-            recent_projects: Vec::new(),
         }
     }
 }
@@ -1197,17 +1183,9 @@ impl MarkdownApp {
     }
 
     fn char_to_byte_index(text: &str, char_index: usize) -> usize {
-        if char_index == 0 {
-            return 0;
-        }
-        let mut count = 0usize;
-        for (byte_idx, _) in text.char_indices() {
-            if count == char_index {
-                return byte_idx;
-            }
-            count += 1;
-        }
-        text.len()
+        text.char_indices()
+            .nth(char_index)
+            .map_or(text.len(), |(byte_idx, _)| byte_idx)
     }
 
     fn byte_to_char_index(text: &str, byte_index: usize) -> usize {
@@ -1341,7 +1319,7 @@ impl MarkdownApp {
         }
         let (start_byte, end_byte) =
             Self::char_range_to_byte_range(&self.content, self.selection_start, self.selection_end);
-        if &self.content[start_byte..end_byte] != self.find_query {
+        if self.content[start_byte..end_byte] != self.find_query {
             self.find_status = Some("Selection does not match search text".to_string());
             return false;
         }
@@ -1403,7 +1381,7 @@ impl MarkdownApp {
             && !self.content.is_empty()
             && line_end == self.content.len()
         {
-            if let Some(last_line) = self.content.split_inclusive('\n').last() {
+            if let Some(last_line) = self.content.split_inclusive('\n').next_back() {
                 let len = last_line.len();
                 line_start = self.content.len().saturating_sub(len);
                 line_end = self.content.len();

@@ -1,6 +1,15 @@
 //! Filesystem events are hints: reconcile against fresh disk contents off the UI thread.
-use notify::{event::{ModifyKind, RenameMode}, Event, EventKind, RecursiveMode, Watcher};
-use std::{fs, io, path::{Path, PathBuf}, sync::mpsc::{self, Receiver, Sender}, thread, time::{Duration, Instant}};
+use notify::{
+    event::{ModifyKind, RenameMode},
+    Event, EventKind, RecursiveMode, Watcher,
+};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+    sync::mpsc::{self, Receiver, Sender},
+    thread,
+    time::{Duration, Instant},
+};
 
 const DEBOUNCE: Duration = Duration::from_millis(150);
 const POLL: Duration = Duration::from_secs(2);
@@ -21,7 +30,12 @@ pub fn read(path: &Path) -> Disk {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Decision { Unchanged, Accept, Reload, Conflict }
+pub enum Decision {
+    Unchanged,
+    Accept,
+    Reload,
+    Conflict,
+}
 
 pub fn reconcile(base: &str, local: &str, disk: &Disk, composing: bool) -> Decision {
     match disk {
@@ -48,7 +62,12 @@ pub struct Update {
     pub warning: Option<String>,
 }
 
-enum Message { Configure(Target), Check, Event(notify::Result<Event>), Stop }
+enum Message {
+    Configure(Target),
+    Check,
+    Event(notify::Result<Event>),
+    Stop,
+}
 
 pub struct Monitor {
     tx: Sender<Message>,
@@ -62,31 +81,51 @@ impl Monitor {
         let (updates_tx, updates) = mpsc::channel();
         let events_tx = tx.clone();
         let worker = thread::spawn(move || run(rx, events_tx, updates_tx, ctx));
-        Self { tx, updates, worker: Some(worker) }
+        Self {
+            tx,
+            updates,
+            worker: Some(worker),
+        }
     }
-    pub fn configure(&self, target: Target) { let _ = self.tx.send(Message::Configure(target)); }
-    pub fn check(&self) { let _ = self.tx.send(Message::Check); }
+    pub fn configure(&self, target: Target) {
+        let _ = self.tx.send(Message::Configure(target));
+    }
+    pub fn check(&self) {
+        let _ = self.tx.send(Message::Check);
+    }
 }
 
 impl Drop for Monitor {
     fn drop(&mut self) {
         let _ = self.tx.send(Message::Stop);
-        if let Some(worker) = self.worker.take() { let _ = worker.join(); }
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
     }
 }
 
 fn relocated(path: &Path, renames: &[(PathBuf, PathBuf)]) -> PathBuf {
     // Prefer the original name after atomic replacement (including backup-rename saves).
-    if path.exists() { return path.to_owned(); }
+    if path.exists() {
+        return path.to_owned();
+    }
     let mut result = path.to_owned();
     for (from, to) in renames {
-        if let Ok(suffix) = result.strip_prefix(from) { result = to.join(suffix); }
+        if let Ok(suffix) = result.strip_prefix(from) {
+            result = to.join(suffix);
+        }
     }
-    if result.exists() { result } else { path.to_owned() }
+    if result.exists() {
+        result
+    } else {
+        path.to_owned()
+    }
 }
 
 fn run(rx: Receiver<Message>, tx: Sender<Message>, output: Sender<Update>, ctx: egui::Context) {
-    let mut watcher = notify::recommended_watcher(move |event| { let _ = tx.send(Message::Event(event)); });
+    let mut watcher = notify::recommended_watcher(move |event| {
+        let _ = tx.send(Message::Event(event));
+    });
     let mut watched: Vec<PathBuf> = Vec::new();
     let mut target: Option<Target> = None;
     let mut deadline = Instant::now() + POLL;
@@ -101,34 +140,61 @@ fn run(rx: Receiver<Message>, tx: Sender<Message>, output: Sender<Update>, ctx: 
             Ok(Message::Stop) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
             Ok(Message::Configure(next)) => {
                 // Drop pending events from the old project/document generation.
-                renames.clear(); last = None; burst_start = None;
+                renames.clear();
+                last = None;
+                burst_start = None;
                 if let Ok(watcher) = &mut watcher {
-                    for path in watched.drain(..) { let _ = watcher.unwatch(&path); }
+                    for path in watched.drain(..) {
+                        let _ = watcher.unwatch(&path);
+                    }
                     warning = None;
                     let mut paths = vec![(next.root.clone(), RecursiveMode::Recursive)];
-                    if let Some(parent) = next.root.parent() { paths.push((parent.to_owned(), RecursiveMode::NonRecursive)); }
+                    if let Some(parent) = next.root.parent() {
+                        paths.push((parent.to_owned(), RecursiveMode::NonRecursive));
+                    }
                     if let Some(parent) = next.file.as_deref().and_then(Path::parent) {
-                        if !parent.starts_with(&next.root) { paths.push((parent.to_owned(), RecursiveMode::NonRecursive)); }
+                        if !parent.starts_with(&next.root) {
+                            paths.push((parent.to_owned(), RecursiveMode::NonRecursive));
+                        }
                     }
                     for (path, mode) in paths {
-                        if watched.contains(&path) { continue; }
+                        if watched.contains(&path) {
+                            continue;
+                        }
                         match watcher.watch(&path, mode) {
                             Ok(()) => watched.push(path),
                             Err(err) => warning = Some(err.to_string()),
                         }
                     }
                 }
-                target = Some(next); tree_changed = true; deadline = Instant::now() + DEBOUNCE;
+                target = Some(next);
+                tree_changed = true;
+                deadline = Instant::now() + DEBOUNCE;
             }
-            Ok(Message::Check) => { tree_changed = true; deadline = Instant::now(); }
+            Ok(Message::Check) => {
+                tree_changed = true;
+                deadline = Instant::now();
+            }
             Ok(Message::Event(Ok(event))) => {
-                if matches!(event.kind, EventKind::Access(_)) { continue; }
+                if matches!(event.kind, EventKind::Access(_)) {
+                    continue;
+                }
                 if let Some(t) = &target {
-                    if !event.paths.is_empty() && !event.paths.iter().any(|p| p.starts_with(&t.root) || t.root.starts_with(p) || t.file.as_ref().is_some_and(|file| p == file)) {
+                    if !event.paths.is_empty()
+                        && !event.paths.iter().any(|p| {
+                            p.starts_with(&t.root)
+                                || t.root.starts_with(p)
+                                || t.file.as_ref().is_some_and(|file| p == file)
+                        })
+                    {
                         continue;
                     }
                 }
-                if matches!(event.kind, EventKind::Modify(ModifyKind::Name(RenameMode::Both))) && event.paths.len() == 2 {
+                if matches!(
+                    event.kind,
+                    EventKind::Modify(ModifyKind::Name(RenameMode::Both))
+                ) && event.paths.len() == 2
+                {
                     renames.push((event.paths[0].clone(), event.paths[1].clone()));
                 }
                 let now = Instant::now();
@@ -136,7 +202,10 @@ fn run(rx: Receiver<Message>, tx: Sender<Message>, output: Sender<Update>, ctx: 
                 deadline = (now + DEBOUNCE).min(start + Duration::from_millis(750));
                 tree_changed = true;
             }
-            Ok(Message::Event(Err(err))) => { warning = Some(err.to_string()); deadline = Instant::now(); }
+            Ok(Message::Event(Err(err))) => {
+                warning = Some(err.to_string());
+                deadline = Instant::now();
+            }
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 if let Some(t) = &target {
                     let root = relocated(&t.root, &renames);
@@ -145,17 +214,30 @@ fn run(rx: Receiver<Message>, tx: Sender<Message>, output: Sender<Update>, ctx: 
                     // Wait for two matching reads; don't display a partially written UTF-8 file.
                     if let Some(path) = &file {
                         thread::sleep(Duration::from_millis(40));
-                        if disk != Some(read(path)) { deadline = Instant::now() + DEBOUNCE; continue; }
+                        if disk != Some(read(path)) {
+                            deadline = Instant::now() + DEBOUNCE;
+                            continue;
+                        }
                     }
-                    let update = Update { target: t.clone(), root, file, disk, warning: warning.clone() };
+                    let update = Update {
+                        target: t.clone(),
+                        root,
+                        file,
+                        disk,
+                        warning: warning.clone(),
+                    };
                     // Fallback polling also wakes the tree if native watching failed.
                     if tree_changed || warning.is_some() || last.as_ref() != Some(&update) {
-                        if output.send(update.clone()).is_err() { break; }
+                        if output.send(update.clone()).is_err() {
+                            break;
+                        }
                         ctx.request_repaint();
                     }
                     last = Some(update);
                 }
-                renames.clear(); burst_start = None; tree_changed = false;
+                renames.clear();
+                burst_start = None;
+                tree_changed = false;
                 deadline = Instant::now() + POLL;
             }
         }
@@ -169,17 +251,25 @@ pub fn write_checked(path: &Path, text: &str, expected: Option<&Disk>) -> Result
     let result = (|| -> io::Result<()> {
         let mut file = tempfile::NamedTempFile::new_in(path.parent().unwrap_or(Path::new(".")))?;
         file.write_all(text.as_bytes())?;
-        if let Ok(metadata) = fs::metadata(path) { file.as_file().set_permissions(metadata.permissions())?; }
+        if let Ok(metadata) = fs::metadata(path) {
+            file.as_file().set_permissions(metadata.permissions())?;
+        }
         file.as_file().sync_all()?;
         if expected.is_some_and(|previous| &read(path) != previous) {
-            return Err(io::Error::new(io::ErrorKind::Interrupted, "File changed while saving"));
+            return Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "File changed while saving",
+            ));
         }
         file.persist(path).map_err(|err| err.error)?;
         Ok(())
     })();
     result.map_err(|err| {
-        if err.kind() == io::ErrorKind::Interrupted { read(path) }
-        else { Disk::Unreadable(err.to_string()) }
+        if err.kind() == io::ErrorKind::Interrupted {
+            read(path)
+        } else {
+            Disk::Unreadable(err.to_string())
+        }
     })
 }
 
@@ -220,7 +310,11 @@ pub fn map_cursor(old: &str, new: &str, index: usize) -> usize {
         .min(new_len);
     }
     // Cursor at the very end of the old text.
-    if index >= *old_starts.last().unwrap_or(&0) { new_len } else { index.min(new_len) }
+    if index >= *old_starts.last().unwrap_or(&0) {
+        new_len
+    } else {
+        index.min(new_len)
+    }
 }
 
 #[cfg(test)]
@@ -233,9 +327,18 @@ mod tests {
         assert_eq!(reconcile("base", "base", &disk, false), Decision::Reload);
         assert_eq!(reconcile("base", "base", &disk, true), Decision::Conflict);
         assert_eq!(reconcile("base", "mine", &disk, false), Decision::Conflict);
-        assert_eq!(reconcile("base", "mine", &Disk::Text("base".into()), false), Decision::Unchanged);
-        assert_eq!(reconcile("base", "mine", &Disk::Text("mine".into()), false), Decision::Accept);
-        assert_eq!(reconcile("base", "base", &Disk::Missing, false), Decision::Conflict);
+        assert_eq!(
+            reconcile("base", "mine", &Disk::Text("base".into()), false),
+            Decision::Unchanged
+        );
+        assert_eq!(
+            reconcile("base", "mine", &Disk::Text("mine".into()), false),
+            Decision::Accept
+        );
+        assert_eq!(
+            reconcile("base", "base", &Disk::Missing, false),
+            Decision::Conflict
+        );
     }
 
     #[test]
@@ -257,19 +360,31 @@ mod tests {
         let file = root.join("chapter.md");
         fs::write(&file, "draft").unwrap();
         let monitor = Monitor::new(egui::Context::default());
-        let target = Target { generation: 1, root: root.clone(), file: Some(file.clone()) };
+        let target = Target {
+            generation: 1,
+            root: root.clone(),
+            file: Some(file.clone()),
+        };
         monitor.configure(target.clone());
         // Initial report after configuring.
-        let first = monitor.updates.recv_timeout(Duration::from_secs(5)).unwrap();
+        let first = monitor
+            .updates
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
         assert_eq!(first.disk, Some(Disk::Text("draft".into())));
         // Simulate an agent replacing the file atomically.
         thread::sleep(Duration::from_millis(100));
         write_checked(&file, "agent edit", None).unwrap();
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
-            let update = monitor.updates.recv_timeout(Duration::from_secs(5)).unwrap();
+            let update = monitor
+                .updates
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap();
             assert_eq!(update.target, target);
-            if update.disk == Some(Disk::Text("agent edit".into())) { break; }
+            if update.disk == Some(Disk::Text("agent edit".into())) {
+                break;
+            }
             assert!(Instant::now() < deadline, "external write was not reported");
         }
     }

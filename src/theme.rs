@@ -87,7 +87,11 @@ pub fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
 }
 
 fn visuals(p: &Palette) -> Visuals {
-    let mut v = if p.dark { Visuals::dark() } else { Visuals::light() };
+    let mut v = if p.dark {
+        Visuals::dark()
+    } else {
+        Visuals::light()
+    };
     let border = mix(p.desk, p.text, 0.14);
     let raised = mix(p.desk, p.page, 0.6);
 

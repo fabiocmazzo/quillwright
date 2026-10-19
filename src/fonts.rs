@@ -93,17 +93,17 @@ fn definitions(db: &Database, name: &str) -> FontDefinitions {
     let mut fonts = FontDefinitions::default();
     let egui_fallback = fonts.families[&FontFamily::Proportional].clone();
     for (family_name, bytes) in [("Literata", LITERATA), ("Atkinson Hyperlegible", ATKINSON)] {
-        for (variant, data) in bytes.into_iter().enumerate() {
+        for (style, data) in STYLES.iter().zip(bytes) {
             fonts.font_data.insert(
-                format!("{family_name}-{}", STYLES[variant]),
+                format!("{family_name}-{style}"),
                 FontData::from_static(data),
             );
         }
     }
-    for variant in 0..4 {
+    for (variant, style) in STYLES.iter().enumerate() {
         let mut chain = Vec::new();
         if let Some(data) = system_face(db, name.trim(), variant) {
-            let key = format!("system-{}", STYLES[variant]);
+            let key = format!("system-{}", style);
             fonts.font_data.insert(key.clone(), data);
             chain.push(key);
         }
@@ -113,9 +113,9 @@ fn definitions(db: &Database, name: &str) -> FontDefinitions {
             } else {
                 "Atkinson Hyperlegible"
             };
-            chain.push(format!("{canonical}-{}", STYLES[variant]));
+            chain.push(format!("{canonical}-{}", style));
         }
-        let default_key = format!("Literata-{}", STYLES[variant]);
+        let default_key = format!("Literata-{}", style);
         if !chain.contains(&default_key) {
             chain.push(default_key);
         }
@@ -153,7 +153,11 @@ fn install_with_database(ctx: &egui::Context, config: &crate::editor::EditorConf
 /// Change the editor text size at runtime (fonts stay installed). Returns the clamped size.
 pub fn set_size(ctx: &egui::Context, size: f32) -> f32 {
     let mut metrics = typography(ctx);
-    metrics.size = if size.is_finite() { size.clamp(6.0, 96.0) } else { Typography::default().size };
+    metrics.size = if size.is_finite() {
+        size.clamp(6.0, 96.0)
+    } else {
+        Typography::default().size
+    };
     ctx.data_mut(|data| data.insert_temp(egui::Id::new("editor_typography"), metrics));
     metrics.size
 }
@@ -180,9 +184,9 @@ mod tests {
             ("missing family", "Literata"),
         ] {
             let fonts = definitions(&db, name);
-            for variant in 0..4 {
+            for (variant, style) in STYLES.iter().enumerate() {
                 let chain = &fonts.families[&family(variant % 2 == 1, variant >= 2)];
-                assert_eq!(chain[0], format!("{expected}-{}", STYLES[variant]));
+                assert_eq!(chain[0], format!("{expected}-{}", style));
                 let data = &fonts.font_data[&chain[0]];
                 assert!(
                     ab_glyph::FontRef::try_from_slice_and_index(&data.font, data.index).is_ok()
@@ -203,10 +207,10 @@ mod tests {
             db.load_font_data(bytes.to_vec());
         }
         let fonts = definitions(&db, &name);
-        for variant in 0..4 {
+        for (variant, style) in STYLES.iter().enumerate() {
             assert_eq!(
                 fonts.families[&family(variant % 2 == 1, variant >= 2)][0],
-                format!("system-{}", STYLES[variant])
+                format!("system-{}", style)
             );
         }
     }

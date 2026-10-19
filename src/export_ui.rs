@@ -72,7 +72,10 @@ impl MarkdownApp {
         }
         let p = theme::current(ctx);
         let chapters = self.index.chapters.len();
-        let open_words = self.file_path.as_deref().map(|path| (path, self.current_words));
+        let open_words = self
+            .file_path
+            .as_deref()
+            .map(|path| (path, self.current_words));
         let words = self.index.manuscript_words(open_words);
         let pdf_engine = self.pdf_engine();
         let project = self.working_dir.clone();
@@ -249,7 +252,9 @@ impl MarkdownApp {
         config.format = format;
         config.author = self.export.author.trim().to_string();
         config.table_of_contents = self.export.table_of_contents;
-        config.titles.insert(project.display().to_string(), title.clone());
+        config
+            .titles
+            .insert(project.display().to_string(), title.clone());
         let last_dir = config.last_directory.clone();
         self.save_config();
 
@@ -298,7 +303,12 @@ impl MarkdownApp {
                 pdf_engine: self.pdf_engine(),
             };
             let mut command = vec![self.config.export.pandoc.clone()];
-            command.extend(export::arguments(&options, &output, filter.path(), &project));
+            command.extend(export::arguments(
+                &options,
+                &output,
+                filter.path(),
+                &project,
+            ));
             let job = Job::run(&command, &project, Some(book), ctx.clone())?;
             Ok(Running {
                 job,

@@ -40,7 +40,14 @@ pub const PRESETS: &[Preset] = &[
     },
     Preset {
         name: "Codex",
-        command: &["codex", "exec", "--skip-git-repo-check", "--sandbox", "read-only", "-"],
+        command: &[
+            "codex",
+            "exec",
+            "--skip-git-repo-check",
+            "--sandbox",
+            "read-only",
+            "-",
+        ],
         prompt_as_argument: false,
         note: "Uses your Codex CLI login, in a read-only sandbox.",
     },
@@ -183,7 +190,12 @@ fn marked_chapter(text: &str, start: usize, end: usize) -> String {
     let marked = if a == b {
         format!("{}{CURSOR}{}", &text[..a], &text[a..])
     } else {
-        format!("{}{SEL_START}{}{SEL_END}{}", &text[..a], &text[a..b], &text[b..])
+        format!(
+            "{}{SEL_START}{}{SEL_END}{}",
+            &text[..a],
+            &text[a..b],
+            &text[b..]
+        )
     };
     const LIMIT: usize = 60_000;
     if marked.chars().count() <= LIMIT {
@@ -342,7 +354,9 @@ pub fn clean_output(text: &str) -> String {
 }
 
 fn char_to_byte(text: &str, index: usize) -> usize {
-    text.char_indices().nth(index).map_or(text.len(), |(b, _)| b)
+    text.char_indices()
+        .nth(index)
+        .map_or(text.len(), |(b, _)| b)
 }
 
 /// Replace the originally selected passage. If the buffer changed, find the passage again.
@@ -352,21 +366,23 @@ pub fn apply_replacement(
     request: &Request,
     replacement: &str,
 ) -> Result<(usize, usize), String> {
-    let (a, b) = (char_to_byte(content, request.start), char_to_byte(content, request.end));
-    let byte_start = if content.get(a..b) == Some(request.selected.as_str()) {
-        a
-    } else {
-        let mut matches = content.match_indices(&request.selected);
-        match (matches.next(), matches.next()) {
-            (Some((found, _)), None) => found,
-            _ => {
-                return Err(
+    let (a, b) = (
+        char_to_byte(content, request.start),
+        char_to_byte(content, request.end),
+    );
+    let byte_start =
+        if content.get(a..b) == Some(request.selected.as_str()) {
+            a
+        } else {
+            let mut matches = content.match_indices(&request.selected);
+            match (matches.next(), matches.next()) {
+                (Some((found, _)), None) => found,
+                _ => return Err(
                     "The selected passage changed since the request. Copy the suggestion instead."
                         .into(),
-                )
+                ),
             }
-        }
-    };
+        };
     content.replace_range(byte_start..byte_start + request.selected.len(), replacement);
     let start = content[..byte_start].chars().count();
     Ok((start, start + replacement.chars().count()))
@@ -647,7 +663,11 @@ mod tests {
         assert!(prompt.contains("<selection>\nThe tide rose.\n</selection>"));
         assert!(prompt.contains("Never translate"));
 
-        let cont = build_prompt(&request(Action::Continue, chapter, 12, 12), chapter, &context);
+        let cont = build_prompt(
+            &request(Action::Continue, chapter, 12, 12),
+            chapter,
+            &context,
+        );
         assert!(cont.contains("Mara waited.⟦CURSOR⟧ The tide rose."));
         assert!(!cont.contains("<selection>"));
     }
@@ -685,7 +705,10 @@ mod tests {
     fn output_cleanup() {
         assert_eq!(clean_output("```markdown\nHello.\n```\n"), "Hello.");
         assert_eq!(clean_output("  \"Quoted.\"  "), "Quoted.");
-        assert_eq!(clean_output("She said \"hi\" and \"bye\"."), "She said \"hi\" and \"bye\".");
+        assert_eq!(
+            clean_output("She said \"hi\" and \"bye\"."),
+            "She said \"hi\" and \"bye\"."
+        );
         assert_eq!(clean_output("Text ⟦CURSOR⟧"), "Text");
     }
 
@@ -738,8 +761,13 @@ mod tests {
             command: Some(vec!["cat".into()]),
             prompt_as_argument: false,
         };
-        let mut job = Job::start(&config, Path::new("."), "olá mundo".into(), egui::Context::default())
-            .unwrap();
+        let mut job = Job::start(
+            &config,
+            Path::new("."),
+            "olá mundo".into(),
+            egui::Context::default(),
+        )
+        .unwrap();
         for _ in 0..200 {
             job.poll();
             if job.finished.is_some() {
@@ -757,8 +785,13 @@ mod tests {
             command: Some(vec!["sleep".into(), "30".into()]),
             prompt_as_argument: true,
         };
-        let mut job = Job::start(&config, Path::new("."), "5".into(), egui::Context::default())
-            .unwrap();
+        let mut job = Job::start(
+            &config,
+            Path::new("."),
+            "5".into(),
+            egui::Context::default(),
+        )
+        .unwrap();
         job.cancel();
         for _ in 0..200 {
             job.poll();
@@ -773,6 +806,12 @@ mod tests {
             command: Some(vec!["quillwright-no-such-command".into()]),
             prompt_as_argument: false,
         };
-        assert!(Job::start(&missing, Path::new("."), String::new(), egui::Context::default()).is_err());
+        assert!(Job::start(
+            &missing,
+            Path::new("."),
+            String::new(),
+            egui::Context::default()
+        )
+        .is_err());
     }
 }

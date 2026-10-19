@@ -166,7 +166,10 @@ impl MarkdownApp {
             crate::assistant::Action::Continuity,
         ] {
             let enabled = !running && (!action.needs_selection() || has_selection);
-            if ui.add_enabled(enabled, Button::new(action.label())).clicked() {
+            if ui
+                .add_enabled(enabled, Button::new(action.label()))
+                .clicked()
+            {
                 let ctx = ui.ctx().clone();
                 self.send_assistant(&ctx, action);
                 ui.close_menu();
@@ -229,8 +232,8 @@ impl MarkdownApp {
             self.change_text_size(ui.ctx(), -1.0);
         }
         if ui.button("Default Text Size").clicked() {
-            let delta = crate::editor::EditorConfig::default().font_size
-                - fonts::typography(ui.ctx()).size;
+            let delta =
+                crate::editor::EditorConfig::default().font_size - fonts::typography(ui.ctx()).size;
             self.change_text_size(ui.ctx(), delta);
             ui.close_menu();
         }
@@ -238,7 +241,11 @@ impl MarkdownApp {
         ui.label(RichText::new("Session goal (words)").small().weak());
         let mut goal = self.config.view.session_goal;
         if ui
-            .add(egui::DragValue::new(&mut goal).speed(50).clamp_range(0..=100_000))
+            .add(
+                egui::DragValue::new(&mut goal)
+                    .speed(50)
+                    .clamp_range(0..=100_000),
+            )
             .on_hover_text("0 hides the goal")
             .changed()
         {
@@ -444,7 +451,10 @@ impl MarkdownApp {
                         ui.add_space(10.0);
                         let structured = index.has_chapters_dir || index.has_characters_dir;
                         egui::CollapsingHeader::new(
-                            RichText::new("ALL FILES").size(11.0).color(p.muted).strong(),
+                            RichText::new("ALL FILES")
+                                .size(11.0)
+                                .color(p.muted)
+                                .strong(),
                         )
                         .id_source("all_files")
                         .default_open(!structured)
@@ -488,7 +498,10 @@ impl MarkdownApp {
 
     pub(crate) fn show_status_bar(&mut self, ctx: &Context) {
         let p = theme::current(ctx);
-        let open_words = self.file_path.as_deref().map(|path| (path, self.current_words));
+        let open_words = self
+            .file_path
+            .as_deref()
+            .map(|path| (path, self.current_words));
         let total = self.index.manuscript_words(open_words);
         let is_chapter = self
             .file_path
@@ -518,13 +531,17 @@ impl MarkdownApp {
                     } else {
                         ui.label(RichText::new("Saved").size(12.5).color(p.muted));
                     }
-                    ui.label(RichText::new(self.document_title()).size(13.0).color(p.text))
-                        .on_hover_text(
-                            self.file_path
-                                .as_ref()
-                                .map(|path| path.display().to_string())
-                                .unwrap_or_else(|| "Not saved yet".into()),
-                        );
+                    ui.label(
+                        RichText::new(self.document_title())
+                            .size(13.0)
+                            .color(p.text),
+                    )
+                    .on_hover_text(
+                        self.file_path
+                            .as_ref()
+                            .map(|path| path.display().to_string())
+                            .unwrap_or_else(|| "Not saved yet".into()),
+                    );
                     if let Some(notice) = &self.sync_notice {
                         ui.label(small(notice.clone()));
                     }
@@ -972,7 +989,11 @@ fn nav_row(
         let mut job = LayoutJob::simple_singleline(
             title.to_owned(),
             FontId::proportional(14.0),
-            if selected { p.text } else { theme::mix(p.text, p.muted, 0.25) },
+            if selected {
+                p.text
+            } else {
+                theme::mix(p.text, p.muted, 0.25)
+            },
         );
         job.wrap = TextWrapping {
             max_width: (right - left).max(10.0),
