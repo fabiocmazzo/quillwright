@@ -76,3 +76,11 @@ command = ["claude", "-p"]
 
 # Append the prompt as the last argument instead of writing it to stdin.
 prompt_as_argument = false
+
+[export]
+# Manuscript export (File → Export Manuscript..., Ctrl+Shift+E) uses pandoc.
+# Set the full path if pandoc is not on your PATH.
+pandoc = "pandoc"
+# PDF engine; leave unset to use the first one installed
+# (typst, tectonic, xelatex, lualatex, pdflatex, weasyprint, wkhtmltopdf).
+# pdf_engine = "typst"

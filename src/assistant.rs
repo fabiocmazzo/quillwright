@@ -465,22 +465,37 @@ impl Job {
         prompt: String,
         ctx: egui::Context,
     ) -> io::Result<Job> {
-        let parts = config
+        let mut parts = config
             .command
-            .as_ref()
+            .clone()
             .filter(|c| !c.is_empty())
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "No command configured"))?;
-        let mut command = Command::new(&parts[0]);
+        if config.prompt_as_argument {
+            parts.push(prompt);
+            Job::run(&parts, cwd, None, ctx)
+        } else {
+            Job::run(&parts, cwd, Some(prompt), ctx)
+        }
+    }
+
+    /// Run any command in the background, writing `input` to its stdin.
+    pub fn run(
+        parts: &[String],
+        cwd: &Path,
+        input: Option<String>,
+        ctx: egui::Context,
+    ) -> io::Result<Job> {
+        let (program, args) = parts
+            .split_first()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Empty command"))?;
+        let mut command = Command::new(program);
         command
-            .args(&parts[1..])
+            .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         if cwd.is_dir() {
             command.current_dir(cwd);
-        }
-        if config.prompt_as_argument {
-            command.arg(&prompt);
         }
         let mut child = command.spawn()?;
         let stdin = child.stdin.take();
@@ -490,10 +505,9 @@ impl Job {
         let cancelled = Arc::new(AtomicBool::new(false));
         let (tx, events) = mpsc::channel();
 
-        let stdin_prompt = (!config.prompt_as_argument).then_some(prompt);
         thread::spawn(move || {
-            if let (Some(mut stdin), Some(prompt)) = (stdin, stdin_prompt) {
-                let _ = stdin.write_all(prompt.as_bytes());
+            if let (Some(mut stdin), Some(input)) = (stdin, input) {
+                let _ = stdin.write_all(input.as_bytes());
             }
             // Dropping stdin closes it, so the command knows the prompt is complete.
         });

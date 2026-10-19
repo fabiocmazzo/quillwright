@@ -4,6 +4,8 @@ use egui::{Align2, CentralPanel, Color32, Context};
 mod assistant;
 mod assistant_ui;
 mod editor;
+mod export;
+mod export_ui;
 mod manuscript;
 mod theme;
 mod file_sync;
@@ -124,6 +126,7 @@ struct MarkdownApp {
     window_title: String,
     assistant: assistant_ui::AssistantState,
     saving: saving::SavingState,
+    export: export_ui::ExportState,
     /// Where version history is kept; None if no data directory is available.
     history_root: Option<PathBuf>,
 }
@@ -166,6 +169,7 @@ struct AppConfig {
     editor: editor::EditorConfig,
     view: ViewConfig,
     assistant: assistant::AssistantConfig,
+    export: export::ExportConfig,
     /// Most recently opened projects, newest first.
     recent_projects: Vec<PathBuf>,
 }
@@ -196,6 +200,7 @@ impl Default for AppConfig {
             editor: editor::EditorConfig::default(),
             view: ViewConfig::default(),
             assistant: assistant::AssistantConfig::default(),
+            export: export::ExportConfig::default(),
             recent_projects: Vec::new(),
         }
     }
@@ -340,6 +345,7 @@ impl Default for MarkdownApp {
             window_title: String::new(),
             assistant: assistant_ui::AssistantState::default(),
             saving: saving::SavingState::default(),
+            export: export_ui::ExportState::default(),
             history_root: history::default_root(),
         };
 
@@ -370,6 +376,7 @@ impl eframe::App for MarkdownApp {
         }
         // Handle hotkeys. Actions that need the context run after the input lock is released.
         let (mut new_chapter, mut save, mut text_delta) = (false, false, 0.0);
+        let mut open_export = false;
         ctx.input(|i| {
             if i.key_pressed(egui::Key::H) && i.modifiers.ctrl {
                 self.show_help_overlay = !self.show_help_overlay;
@@ -388,6 +395,9 @@ impl eframe::App for MarkdownApp {
                 || (self.focus_mode && i.key_pressed(egui::Key::Escape))
             {
                 self.pending_focus_toggle = true;
+            }
+            if i.key_pressed(egui::Key::E) && i.modifiers.ctrl && i.modifiers.shift {
+                open_export = true;
             }
             if i.key_pressed(egui::Key::K) && i.modifiers.ctrl {
                 self.toggle_assistant();
@@ -466,6 +476,9 @@ impl eframe::App for MarkdownApp {
         }
         if text_delta != 0.0 {
             self.change_text_size(ctx, text_delta);
+        }
+        if open_export {
+            self.open_export();
         }
         if self.pending_focus_toggle {
             self.pending_focus_toggle = false;
@@ -667,6 +680,7 @@ impl eframe::App for MarkdownApp {
         }
 
         self.show_history_window(ctx);
+        self.show_export_window(ctx);
         self.after_frame(ctx);
         self.run_autosave(ctx);
     }

@@ -24,6 +24,7 @@ Your work is never locked into a proprietary format. Everything is plain UTF-8 M
 - **A project home.** The start screen continues the chapter you were writing and lists your recent projects.
 - **AI assistant panel (Ctrl+K).** Rewrite a selection, continue a scene, get three alternatives, or check a chapter against your world rules and character sheets, using the AI tool you already have (Claude Code, Codex, a local Ollama model, or any command). Suggestions are shown as a diff and never touch the manuscript until you accept them.
 - **Agent-aware file sync.** Quillwright watches the project folder. When an agent (or any other program) changes a file, the sidebar updates immediately and the open chapter reloads automatically, keeping your cursor near where it was. If you have unsaved edits, you are asked whether to reload or keep your version — nothing is merged or overwritten silently.
+- **Export the manuscript** to Word, EPUB, PDF, OpenDocument, or a web page with [pandoc](https://pandoc.org): chapters in order, a title page, an optional table of contents, each chapter on a new page, and scene breaks set as a centered *\* \* \**.
 - **Autosave and version history.** Your chapter is saved a moment after you stop typing, when you switch to another window, and before you close the file or the app. Earlier versions of each file are kept on your computer, and **File → Version History...** shows what changed and restores any of them.
 - **Safe saving.** Files are saved atomically (written to a temporary file, then renamed), so agents never read a half-written chapter. Saving, including autosave, refuses to overwrite a file that changed on disk since you opened it, and asks you instead.
 - **Typography for long reading.** Literata and [Atkinson Hyperlegible](https://github.com/googlefonts/atkinson-hyperlegible) are bundled, or use any installed font. Text size changes live (Ctrl+] / Ctrl+[).
@@ -68,6 +69,35 @@ The last opened project is remembered between sessions.
 **File → Version History...** lists the copies of the open file with their date and word count, and shows each one compared with the text in the editor. **Restore This Version** puts it back in the editor; autosave then writes it to disk.
 
 Copies live outside the project, in `~/.local/share/quillwright/history/` on Linux (one folder per file, with a `source.txt` naming the original path), so agents and Git never see them. The 50 newest copies of each file are kept. History is a safety net for recent work, not a backup: keep the project under Git or a backup tool as well.
+
+## Exporting the manuscript
+
+**File → Export Manuscript...** (Ctrl+Shift+E) joins your chapters in sidebar order and converts them with [pandoc](https://pandoc.org/installing.html), which must be installed separately.
+
+| Format | Good for |
+| --- | --- |
+| Word (.docx) | Editors, agents, and Google Docs |
+| EPUB (.epub) | E-readers and beta readers |
+| PDF (.pdf) | Printing and sharing a fixed layout; needs a PDF engine (see below) |
+| OpenDocument (.odt) | LibreOffice |
+| Web page (.html) | A single self-contained file |
+
+The export:
+
+- starts with a title page from the **Title** and **Author** you enter (remembered per project), and an optional table of contents;
+- starts each chapter on a new page. A chapter file that does not begin with a `# Heading` gets one from its title in the sidebar;
+- turns scene breaks (`***` or `---`) into a centered *\* \* \** instead of a horizontal line;
+- uses curly quotes and real dashes, and keeps footnotes, tables, and images (paths relative to the chapter or the project);
+- includes unsaved edits in the open chapter, so you never need to save first.
+
+**PDF** needs a PDF engine. Quillwright uses the first one it finds: [typst](https://github.com/typst/typst) (recommended: a single small program), tectonic, xelatex, lualatex, pdflatex, weasyprint, or wkhtmltopdf.
+
+**Customising the result**, with optional files in the project root:
+
+- `metadata.yaml`: any [pandoc metadata](https://pandoc.org/MANUAL.html#metadata-variables), for example `lang: pt-BR`, `subtitle`, `date`, or `rights`. The title and author typed in the export window take precedence.
+- `reference.docx` / `reference.odt`: a document whose styles (fonts, margins, headings) are used for Word or OpenDocument exports. Create one with `pandoc -o reference.docx --print-default-data-file reference.docx`, then edit its styles in your word processor.
+
+In Word exports, the table of contents is a placeholder until you update it: in Word, right-click it and choose *Update Field*; in LibreOffice, use *Tools → Update → Update All*. EPUB, PDF, and HTML tables of contents are complete.
 
 ## Writing with AI agents
 
@@ -154,6 +184,8 @@ Or run it directly:
 cargo run --release
 ```
 
+To export manuscripts, also install [pandoc](https://pandoc.org/installing.html), plus [typst](https://github.com/typst/typst) if you want PDF (`sudo pacman -S pandoc-cli typst`, `sudo apt install pandoc`, `brew install pandoc typst`). Neither is needed for writing.
+
 ## Usage
 
 ```bash
@@ -171,6 +203,7 @@ Press **Ctrl+H** in the app to see all shortcuts.
 | --- | --- |
 | F11 (Esc to leave) | Focus mode |
 | Ctrl+K | Assistant panel |
+| Ctrl+Shift+E | Export manuscript |
 | Ctrl+Enter | Send the request (in the assistant panel) |
 | Ctrl+B | Show / hide the sidebar |
 | Ctrl+Shift+T | Typewriter scrolling |
@@ -265,6 +298,16 @@ prompt_as_argument = false
 ```
 
 The command runs in the project folder. The prompt is written to its standard input, or appended as the last argument when `prompt_as_argument = true`; the answer is read from standard output. Any program that works this way can be used, including your own scripts. The assistant can also be configured from **Assistant → Assistant Settings...**. Quillwright stores no API keys: authentication is handled by the tool you choose.
+
+### Export
+
+```toml
+[export]
+pandoc = "pandoc"          # path to pandoc if it is not on your PATH
+# pdf_engine = "xelatex"   # force a PDF engine instead of the first one found
+```
+
+The export window also stores your last format, author, table-of-contents choice, book titles per project, and the last export folder here.
 
 ## Known limitations
 

@@ -14,6 +14,7 @@ pub const SHORTCUTS: &[(&str, &str)] = &[
     ("F11", "Focus mode (Esc to leave)"),
     ("Ctrl+B", "Show / hide sidebar"),
     ("Ctrl+K", "AI assistant panel"),
+    ("Ctrl+Shift+E", "Export manuscript"),
     ("Ctrl+Enter", "Send the assistant request"),
     ("Ctrl+Shift+T", "Typewriter scrolling"),
     ("Ctrl+Shift+D", "Dim other paragraphs"),
@@ -137,6 +138,10 @@ impl MarkdownApp {
             .clicked()
         {
             self.open_history();
+            ui.close_menu();
+        }
+        if ui.button("Export Manuscript...\tCtrl+Shift+E").clicked() {
+            self.open_export();
             ui.close_menu();
         }
         ui.separator();
