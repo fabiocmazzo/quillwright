@@ -768,7 +768,7 @@ mod tests {
             egui::Context::default(),
         )
         .unwrap();
-        for _ in 0..200 {
+        for _ in 0..1000 {
             job.poll();
             if job.finished.is_some() {
                 break;
@@ -781,19 +781,22 @@ mod tests {
 
     #[test]
     fn job_can_be_cancelled_and_reports_missing_commands() {
+        // One argument only: BSD sleep (macOS) rejects more, and would exit before
+        // being cancelled.
         let config = AssistantConfig {
             command: Some(vec!["sleep".into(), "30".into()]),
-            prompt_as_argument: true,
+            prompt_as_argument: false,
         };
         let mut job = Job::start(
             &config,
             Path::new("."),
-            "5".into(),
+            String::new(),
             egui::Context::default(),
         )
         .unwrap();
         job.cancel();
-        for _ in 0..200 {
+        // Generous timeouts: CI machines can be slow to start processes.
+        for _ in 0..1000 {
             job.poll();
             if job.finished.is_some() {
                 break;

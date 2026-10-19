@@ -387,11 +387,12 @@ mod tests {
         // Simulate an agent replacing the file atomically.
         thread::sleep(Duration::from_millis(100));
         write_checked(&file, "agent edit", None).unwrap();
-        let deadline = Instant::now() + Duration::from_secs(5);
+        // Generous: file events can lag on busy CI machines (FSEvents on macOS).
+        let deadline = Instant::now() + Duration::from_secs(10);
         loop {
             let update = monitor
                 .updates
-                .recv_timeout(Duration::from_secs(5))
+                .recv_timeout(Duration::from_secs(10))
                 .unwrap();
             assert_eq!(update.target, target);
             if update.disk == Some(Disk::Text("agent edit".into())) {
