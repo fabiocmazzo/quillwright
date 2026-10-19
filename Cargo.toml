@@ -1,10 +1,10 @@
 [package]
 name = "quillwright"
-version = "0.1.1"
+version = "0.1.0"
 edition = "2021"
 description = "A distraction-free writing environment for novels and long-form fiction, built on plain Markdown and designed to work alongside AI agents"
 license = "MIT"
-repository = "https://github.com/fibnas/md-echo"
+repository = "https://github.com/fabiocmazzo/quillwright"
 categories = ["text-editors"]
 keywords = ["writing", "fiction", "novel", "markdown", "editor"]
 readme = "README.md"
