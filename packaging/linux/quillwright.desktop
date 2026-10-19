@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Quillwright
+GenericName=Writing Environment
+Comment=Write novels and long-form fiction in plain Markdown, alongside AI agents
+Exec=quillwright %f
+Icon=quillwright
+Terminal=false
+Categories=Office;WordProcessor;
+Keywords=writing;novel;fiction;markdown;manuscript;
+MimeType=text/markdown;
+StartupWMClass=quillwright

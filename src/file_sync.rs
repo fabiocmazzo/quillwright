@@ -148,7 +148,13 @@ fn run(rx: Receiver<Message>, tx: Sender<Message>, output: Sender<Update>, ctx: 
                         let _ = watcher.unwatch(&path);
                     }
                     warning = None;
-                    let mut paths = vec![(next.root.clone(), RecursiveMode::Recursive)];
+                    // Never watch a whole disk or home folder recursively: only real projects.
+                    let depth = if is_broad(&next.root) {
+                        RecursiveMode::NonRecursive
+                    } else {
+                        RecursiveMode::Recursive
+                    };
+                    let mut paths = vec![(next.root.clone(), depth)];
                     if let Some(parent) = next.root.parent() {
                         paths.push((parent.to_owned(), RecursiveMode::NonRecursive));
                     }
@@ -317,6 +323,12 @@ pub fn map_cursor(old: &str, new: &str, index: usize) -> usize {
     }
 }
 
+/// A filesystem root or the home folder: too large to treat as a project.
+pub fn is_broad(dir: &Path) -> bool {
+    dir.parent().is_none()
+        || directories::BaseDirs::new().is_some_and(|dirs| dirs.home_dir() == dir)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -402,5 +414,14 @@ mod tests {
             Err(Disk::Text("agent".into()))
         );
         assert_eq!(fs::read_to_string(&path).unwrap(), "agent");
+    }
+
+    #[test]
+    fn roots_and_home_are_broad() {
+        assert!(is_broad(Path::new("/")));
+        if let Some(dirs) = directories::BaseDirs::new() {
+            assert!(is_broad(dirs.home_dir()));
+            assert!(!is_broad(&dirs.home_dir().join("novels/the-salt-road")));
+        }
     }
 }

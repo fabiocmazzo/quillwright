@@ -1,3 +1,6 @@
+// Release builds on Windows are GUI apps: no console window next to the editor.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 use directories::ProjectDirs;
 use eframe::egui;
 use egui::{Align2, CentralPanel, Color32, Context};
@@ -11,6 +14,7 @@ mod fonts;
 mod history;
 mod live_preview;
 mod manuscript;
+mod process;
 mod project;
 mod saving;
 mod theme;
@@ -21,7 +25,6 @@ use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use tempfile::{Builder, NamedTempFile};
 
 fn main() -> eframe::Result<()> {
@@ -44,7 +47,19 @@ fn main() -> eframe::Result<()> {
     } else {
         MarkdownApp::default()
     };
-    let options = eframe::NativeOptions::default();
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title("Quillwright")
+        // Matches the .desktop file, so Linux docks show the right icon.
+        .with_app_id("quillwright");
+    if let Ok(icon) =
+        eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon/quillwright-128.png"))
+    {
+        viewport = viewport.with_icon(icon);
+    }
+    let options = eframe::NativeOptions {
+        viewport,
+        ..Default::default()
+    };
     eframe::run_native(
         "Quillwright",
         options,
@@ -786,7 +801,21 @@ impl MarkdownApp {
             }
         }
 
-        let default_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        // Apps opened from a file manager, Finder, or the Start menu start in "/",
+        // the program's folder, or a system folder: use the home folder instead.
+        let home = directories::BaseDirs::new().map(|dirs| dirs.home_dir().to_path_buf());
+        let program_dir = env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(Path::to_path_buf));
+        let default_dir = env::current_dir()
+            .ok()
+            .filter(|dir| dir.parent().is_some() && Some(dir) != program_dir.as_ref())
+            .filter(|dir| {
+                // C:\Windows\System32 and friends.
+                !env::var_os("SystemRoot").is_some_and(|system| dir.starts_with(system))
+            })
+            .or(home)
+            .unwrap_or_else(|| PathBuf::from("."));
         config.working_dir = Some(default_dir.clone());
         default_dir
     }
@@ -1079,7 +1108,7 @@ impl MarkdownApp {
             path
         };
 
-        let mut cmd = Command::new(&command[0]);
+        let mut cmd = process::command(&command[0]);
         for arg in &command[1..] {
             cmd.arg(arg);
         }

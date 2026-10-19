@@ -3,7 +3,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 /// Page breaks before chapters and centered scene breaks, per output format.
 pub const FILTER: &str = include_str!("../assets/export/manuscript.lua");
@@ -202,7 +201,10 @@ pub fn arguments(options: &Options, output: &Path, filter: &Path, project: &Path
 
 /// The installed pandoc version, or None if it cannot be run.
 pub fn pandoc_version(pandoc: &str) -> Option<String> {
-    let output = Command::new(pandoc).arg("--version").output().ok()?;
+    let output = crate::process::command(pandoc)
+        .arg("--version")
+        .output()
+        .ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
     output
         .status
@@ -266,15 +268,15 @@ pub fn default_file_name(title: &str, format: Format) -> String {
 /// Open a file or folder with the desktop's default application.
 pub fn open_with_system(path: &Path) -> std::io::Result<()> {
     #[cfg(target_os = "macos")]
-    let mut command = Command::new("open");
+    let mut command = crate::process::command("open");
     #[cfg(target_os = "windows")]
     let mut command = {
-        let mut c = Command::new("cmd");
+        let mut c = crate::process::command("cmd");
         c.args(["/C", "start", ""]);
         c
     };
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let mut command = Command::new("xdg-open");
+    let mut command = crate::process::command("xdg-open");
     command.arg(path).spawn().map(|_| ())
 }
 

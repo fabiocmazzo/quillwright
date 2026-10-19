@@ -156,21 +156,37 @@ Change detection uses native file system notifications with a polling fallback e
 
 ## Installation
 
-You need a recent stable Rust toolchain and the GTK development headers (used by the native file dialogs):
+Download the latest version from the **Releases** page of this repository.
 
-**Fedora / RHEL**
+| System | File | How to run |
+| --- | --- | --- |
+| Linux | `Quillwright-<version>-x86_64.AppImage` | Make it executable (`chmod +x Quillwright-*.AppImage`), then double-click it or run it from a terminal. |
+| Linux | `quillwright-<version>-linux-x86_64.tar.gz` | Extract it and run `quillwright`. Copy `quillwright.desktop` and `quillwright.png` to `~/.local/share/applications/` and `~/.local/share/icons/` for a menu entry. |
+| Windows | `quillwright-<version>-windows-x86_64.zip` | Extract it and run `quillwright.exe`. |
+| macOS | `Quillwright-<version>-macos-universal.dmg` | Open it and drag Quillwright to Applications. Works on Apple Silicon and Intel Macs. |
+
+The Linux builds need a desktop with GTK 3 (used for file dialogs) and glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36, or later).
+
+**First launch on Windows and macOS:** the builds are not signed with a paid developer certificate yet, so the system warns you the first time.
+
+- **Windows:** in the *Windows protected your PC* dialog, choose **More info → Run anyway**.
+- **macOS:** right-click Quillwright in Applications and choose **Open**, then **Open** again. If macOS says the app is damaged, run `xattr -dr com.apple.quarantine /Applications/Quillwright.app` once in Terminal.
+
+Every release includes a `SHA256SUMS.txt` file for checking downloads.
+
+To export manuscripts, also install [pandoc](https://pandoc.org/installing.html), plus [typst](https://github.com/typst/typst) if you want PDF (`sudo pacman -S pandoc-cli typst`, `sudo apt install pandoc`, `brew install pandoc typst`, `winget install JohnMacFarlane.Pandoc Typst.Typst`). Neither is needed for writing.
+
+### Building from source
+
+You need a recent stable Rust toolchain. On Linux, also install the GTK 3 development headers (used by the native file dialogs):
 
 ```bash
-sudo dnf install gtk3-devel
+sudo dnf install gtk3-devel        # Fedora / RHEL
+sudo apt install libgtk-3-dev      # Debian / Ubuntu
+sudo pacman -S gtk3                # Arch
 ```
 
-**Debian / Ubuntu**
-
-```bash
-sudo apt install libgtk-3-dev
-```
-
-Then build and install from source:
+Then build and install:
 
 ```bash
 git clone <repository-url> quillwright
@@ -178,13 +194,7 @@ cd quillwright
 cargo install --path .
 ```
 
-Or run it directly:
-
-```bash
-cargo run --release
-```
-
-To export manuscripts, also install [pandoc](https://pandoc.org/installing.html), plus [typst](https://github.com/typst/typst) if you want PDF (`sudo pacman -S pandoc-cli typst`, `sudo apt install pandoc`, `brew install pandoc typst`). Neither is needed for writing.
+Or run it directly with `cargo run --release`. To publish a release, see [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Usage
 

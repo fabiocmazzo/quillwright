@@ -5,7 +5,7 @@
 use std::{
     io::{self, Read, Write},
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::{Child, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver, Sender},
@@ -504,7 +504,7 @@ impl Job {
         let (program, args) = parts
             .split_first()
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Empty command"))?;
-        let mut command = Command::new(program);
+        let mut command = crate::process::command(program);
         command
             .args(args)
             .stdin(Stdio::piped())
