@@ -582,9 +582,11 @@ mod tests {
         assert_eq!(h.editor.selection.sorted().map(|c| c.index), [6, 7]);
         let copied = h.frame(vec![Event::Copy], None);
         assert_eq!(copied.platform_output.copied_text, "*");
-        h.key(Key::End, egui::Modifiers::COMMAND | egui::Modifiers::CTRL);
+        // Cmd/Ctrl+Down and Up jump to the ends of the document on every OS
+        // (Ctrl+End means nothing on macOS).
+        h.key(Key::ArrowDown, egui::Modifiers::COMMAND);
         assert_eq!(h.editor.selection.primary.index, h.source.chars().count());
-        h.key(Key::Home, egui::Modifiers::COMMAND | egui::Modifiers::CTRL);
+        h.key(Key::ArrowUp, egui::Modifiers::COMMAND);
         assert_eq!(h.editor.selection.primary.index, 0);
         h.key(Key::ArrowDown, egui::Modifiers::SHIFT);
         assert_eq!(h.editor.selection.secondary.index, 0);
