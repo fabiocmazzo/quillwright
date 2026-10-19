@@ -1,27 +1,53 @@
-# Example md-echo configuration
-# Copy this file to ~/.config/md-echo/config.toml (create directories as needed)
+# Example Quillwright configuration
+# Copy this file to ~/.config/quillwright/config.toml (create directories as needed)
 
 # Optional path to set the initial working directory used by the file tree.
 # Remove or comment out this field to fall back to the current directory on launch.
 working_dir = "/home/you/notes"
 
 [theme]
-# Base visual preset: "dark" (default) or "light".
-base = "dark"
+# Writing theme: "paper" (warm light), "sepia", or "night" (default).
+# The legacy values "light" and "dark" map to "paper" and "night".
+# You can also switch themes from View → Theme.
+base = "night"
 
-# Override panel/background colors with hex strings (with or without leading #).
-# Supported formats: RRGGBB or AARRGGBB.
-background = "#1E1E2E"
-panel = "#11111B"
+# Optional color overrides (RRGGBB or AARRGGBB, with or without a leading #).
+# They apply on top of whichever theme is selected, so leave them commented out
+# if you switch between light and dark themes.
+# background = "#1F2026"   # the page behind the text
+# panel = "#16171B"        # sidebar, menus, and status bar
+# text = "#DCD7CE"
+# accent = "#D9A066"       # cursor, selection, highlights, and links
+# hyperlink = "#D9A066"    # links only; defaults to `accent`
 
-# Override the default text color (RRGGBB or AARRGGBB).
-text = "#CDD6F4"
+[editor]
+# Bundled: Literata (default), Atkinson Hyperlegible; or an installed family name.
+# Missing families fall back to Literata. Restart after changing the font family;
+# text size can also be changed live with Ctrl+] / Ctrl+[.
+font_family = "Literata"
+font_size = 18.0
+# Line height as a multiplier of font size.
+line_height = 1.4
+# Optional source Markdown line numbers (wrapped rows are not numbered separately).
+line_numbers = false
+# Maximum text column width in egui points; the canvas still fills the viewport.
+max_width = 760
+# Center the text column; false aligns it left with padding.
+centered = true
+# Keep the line you are writing vertically centered (View → Typewriter Scrolling).
+typewriter = false
+# Fade every paragraph except the one with the cursor (View → Dim Other Paragraphs).
+dim_paragraphs = false
+# Save the open file automatically (File → Autosave). Untitled documents are never autosaved.
+autosave = true
+# Seconds without typing before autosave writes the file.
+autosave_delay = 2.0
 
-# Accent color applied to selections, hovered elements, and (by default) hyperlinks.
-accent = "#89B4FA"
-
-# Optional explicit hyperlink color. When omitted, `accent` (or egui default) is used.
-hyperlink = "#F38BA8"
+[view]
+# Show the manuscript sidebar (Ctrl+B).
+sidebar = true
+# Words to write per session; shown as a progress bar in the status bar. 0 hides it.
+session_goal = 0
 
 [tools]
 # Commands are arrays executed with the temporary markdown file path appended.
@@ -35,5 +61,18 @@ lint_use_open_file = false
 
 # Markdown formatter command (Ctrl+Shift+F). Comment out to disable formatting.
 format = ["rumdl", "fmt"]
-# When true, run the formatter on the file open in md-echo (requires saving first).
+# When true, run the formatter on the file open in Quillwright (requires saving first).
 format_use_open_file = false
+
+[assistant]
+# Command used by the assistant panel (Ctrl+K). It runs in the project folder,
+# receives the prompt on stdin, and its stdout is shown as the suggestion.
+# Comment out to be asked the first time you open the panel.
+command = ["claude", "-p"]
+# Codex CLI, in a read-only sandbox:
+# command = ["codex", "exec", "--skip-git-repo-check", "--sandbox", "read-only", "-"]
+# A local model; the manuscript never leaves your machine:
+# command = ["ollama", "run", "llama3.1"]
+
+# Append the prompt as the last argument instead of writing it to stdin.
+prompt_as_argument = false

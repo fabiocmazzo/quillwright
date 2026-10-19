@@ -1,0 +1,983 @@
+//! The writing workspace: menus, manuscript navigator, status bar, home screen,
+//! the page, and focus mode.
+use crate::{fonts, manuscript, project, theme, DiscardAction, MarkdownApp};
+use eframe::egui;
+use egui::{
+    text::{LayoutJob, TextWrapping},
+    Align, Align2, Button, Color32, Context, CursorIcon, FontId, Layout, RichText, TextStyle,
+    TopBottomPanel, Ui, ViewportCommand,
+};
+use std::path::{Path, PathBuf};
+
+/// Shortcuts shown in the help overlay, kept next to the code that handles them.
+pub const SHORTCUTS: &[(&str, &str)] = &[
+    ("F11", "Focus mode (Esc to leave)"),
+    ("Ctrl+B", "Show / hide sidebar"),
+    ("Ctrl+K", "AI assistant panel"),
+    ("Ctrl+Enter", "Send the assistant request"),
+    ("Ctrl+Shift+T", "Typewriter scrolling"),
+    ("Ctrl+Shift+D", "Dim other paragraphs"),
+    ("Ctrl+] / Ctrl+[", "Larger / smaller text"),
+    ("Ctrl+Shift+N", "New chapter"),
+    ("Ctrl+N", "New blank document"),
+    ("Ctrl+O", "Open file"),
+    ("Ctrl+S", "Save"),
+    ("Ctrl+Shift+S / Alt+S", "Save as"),
+    ("Ctrl+Z / Ctrl+Y", "Undo / Redo"),
+    ("Ctrl+F / Ctrl+R", "Find / Replace"),
+    ("Ctrl+D", "Delete line"),
+    ("Page Up / Page Down", "Move one page"),
+    ("Ctrl+Shift+L / Ctrl+Shift+F", "Lint / Format Markdown"),
+    ("Ctrl+H", "Show / hide shortcuts"),
+    ("Ctrl+Q", "Quit"),
+];
+
+/// Things the sidebar or home screen asked for; applied after drawing.
+enum NavAction {
+    Open(PathBuf),
+    Jump(usize),
+    NewChapter,
+    NewCharacter,
+    PickProject,
+    OpenProject(PathBuf),
+    NewProject,
+    BlankPage,
+    Home,
+}
+
+impl MarkdownApp {
+    // ----- Menus -----------------------------------------------------------
+
+    pub(crate) fn show_menu_bar(&mut self, ctx: &Context) {
+        let palette = theme::current(ctx);
+        TopBottomPanel::top("menu_bar")
+            .frame(
+                egui::Frame::none()
+                    .fill(palette.desk)
+                    .inner_margin(egui::Margin::symmetric(8.0, 4.0)),
+            )
+            .show(ctx, |ui| {
+                egui::menu::bar(ui, |ui| {
+                    ui.menu_button("File", |ui| self.file_menu(ui));
+                    ui.menu_button("View", |ui| self.view_menu(ui));
+                    ui.menu_button("Assistant", |ui| self.assistant_menu(ui));
+                    ui.menu_button("Tools", |ui| {
+                        if ui.button("Lint Markdown\tCtrl+Shift+L").clicked() {
+                            self.pending_lint = true;
+                            ui.close_menu();
+                        }
+                        if ui.button("Format Markdown\tCtrl+Shift+F").clicked() {
+                            self.pending_format = true;
+                            ui.close_menu();
+                        }
+                    });
+                    ui.menu_button("Help", |ui| {
+                        if ui.button("Keyboard Shortcuts\tCtrl+H").clicked() {
+                            self.show_help_overlay = true;
+                            ui.close_menu();
+                        }
+                    });
+                });
+            });
+    }
+
+    fn file_menu(&mut self, ui: &mut Ui) {
+        if ui.button("New Chapter\tCtrl+Shift+N").clicked() {
+            self.create_chapter();
+            ui.close_menu();
+        }
+        if ui.button("New Character").clicked() {
+            self.create_character();
+            ui.close_menu();
+        }
+        ui.separator();
+        if ui.button("New Project...").clicked() {
+            self.open_new_project_dialog();
+            ui.close_menu();
+        }
+        if ui.button("Open Project...").clicked() {
+            self.pick_project();
+            ui.close_menu();
+        }
+        if ui.button("Project Home").clicked() {
+            self.go_home();
+            ui.close_menu();
+        }
+        ui.separator();
+        if ui.button("New Blank Document\tCtrl+N").clicked() {
+            self.run_or_prompt_discard(DiscardAction::NewDocument);
+            ui.close_menu();
+        }
+        if ui.button("Open File...\tCtrl+O").clicked() {
+            self.run_or_prompt_discard(DiscardAction::OpenDialog);
+            ui.close_menu();
+        }
+        ui.separator();
+        if ui.button("Save\tCtrl+S").clicked() {
+            self.save_file(false);
+            ui.close_menu();
+        }
+        if ui.button("Save As...\tCtrl+Shift+S").clicked() {
+            self.save_file(true);
+            ui.close_menu();
+        }
+        let mut autosave = self.config.editor.autosave;
+        if ui
+            .checkbox(&mut autosave, "Autosave")
+            .on_hover_text("Save the open file a moment after you stop typing")
+            .changed()
+        {
+            self.config.editor.autosave = autosave;
+            self.save_config();
+        }
+        let has_history = self.file_path.is_some() && self.history_root.is_some();
+        if ui
+            .add_enabled(has_history, Button::new("Version History..."))
+            .on_hover_text("Earlier versions of this file, kept on this computer")
+            .clicked()
+        {
+            self.open_history();
+            ui.close_menu();
+        }
+        ui.separator();
+        if ui.button("Exit\tCtrl+Q").clicked() {
+            self.pending_exit = true;
+            ui.close_menu();
+        }
+    }
+
+    fn assistant_menu(&mut self, ui: &mut Ui) {
+        if ui.button("Assistant Panel\tCtrl+K").clicked() {
+            self.toggle_assistant();
+            ui.close_menu();
+        }
+        ui.separator();
+        let has_selection = self.selection_start != self.selection_end;
+        let running = self.assistant.running();
+        for action in [
+            crate::assistant::Action::Rewrite,
+            crate::assistant::Action::Continue,
+            crate::assistant::Action::Alternatives,
+            crate::assistant::Action::Continuity,
+        ] {
+            let enabled = !running && (!action.needs_selection() || has_selection);
+            if ui.add_enabled(enabled, Button::new(action.label())).clicked() {
+                let ctx = ui.ctx().clone();
+                self.send_assistant(&ctx, action);
+                ui.close_menu();
+            }
+        }
+        ui.separator();
+        if ui.button("Assistant Settings...").clicked() {
+            self.open_assistant_settings();
+            ui.close_menu();
+        }
+    }
+
+    fn view_menu(&mut self, ui: &mut Ui) {
+        ui.label(RichText::new("Theme").small().weak());
+        let current = theme::Preset::from_name(&self.config.theme.base);
+        for preset in theme::Preset::ALL {
+            if ui.radio(current == preset, preset.label()).clicked() {
+                self.set_theme(preset);
+                ui.close_menu();
+            }
+        }
+        ui.separator();
+        if ui.button("Focus Mode\tF11").clicked() {
+            self.pending_focus_toggle = true;
+            ui.close_menu();
+        }
+        let mut sidebar = self.config.view.sidebar;
+        if ui.checkbox(&mut sidebar, "Sidebar\tCtrl+B").changed() {
+            self.config.view.sidebar = sidebar;
+            self.save_config();
+        }
+        let mut typewriter = self.config.editor.typewriter;
+        if ui
+            .checkbox(&mut typewriter, "Typewriter Scrolling\tCtrl+Shift+T")
+            .on_hover_text("Keep the line you are writing in the middle of the screen")
+            .changed()
+        {
+            self.config.editor.typewriter = typewriter;
+            self.save_config();
+        }
+        let mut dim = self.config.editor.dim_paragraphs;
+        if ui
+            .checkbox(&mut dim, "Dim Other Paragraphs\tCtrl+Shift+D")
+            .on_hover_text("Fade everything except the paragraph you are writing")
+            .changed()
+        {
+            self.config.editor.dim_paragraphs = dim;
+            self.save_config();
+        }
+        let mut numbers = self.config.editor.line_numbers;
+        if ui.checkbox(&mut numbers, "Line Numbers").changed() {
+            self.config.editor.line_numbers = numbers;
+            self.save_config();
+        }
+        ui.separator();
+        if ui.button("Larger Text\tCtrl+]").clicked() {
+            self.change_text_size(ui.ctx(), 1.0);
+        }
+        if ui.button("Smaller Text\tCtrl+[").clicked() {
+            self.change_text_size(ui.ctx(), -1.0);
+        }
+        if ui.button("Default Text Size").clicked() {
+            let delta = crate::editor::EditorConfig::default().font_size
+                - fonts::typography(ui.ctx()).size;
+            self.change_text_size(ui.ctx(), delta);
+            ui.close_menu();
+        }
+        ui.separator();
+        ui.label(RichText::new("Session goal (words)").small().weak());
+        let mut goal = self.config.view.session_goal;
+        if ui
+            .add(egui::DragValue::new(&mut goal).speed(50).clamp_range(0..=100_000))
+            .on_hover_text("0 hides the goal")
+            .changed()
+        {
+            self.config.view.session_goal = goal;
+            self.save_config();
+        }
+    }
+
+    pub(crate) fn open_new_project_dialog(&mut self) {
+        self.new_project = Some(project::NewProject {
+            name: String::new(),
+            parent: self
+                .working_dir
+                .parent()
+                .filter(|_| self.index.has_chapters_dir)
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| self.working_dir.clone()),
+            error: None,
+        });
+    }
+
+    pub(crate) fn set_theme(&mut self, preset: theme::Preset) {
+        self.config.theme.base = preset.name().to_string();
+        self.theme_applied = false;
+        self.save_config();
+    }
+
+    pub(crate) fn change_text_size(&mut self, ctx: &Context, delta: f32) {
+        let size = fonts::set_size(ctx, fonts::typography(ctx).size + delta);
+        self.config.editor.font_size = size;
+        self.save_config();
+    }
+
+    pub(crate) fn set_focus_mode(&mut self, ctx: &Context, on: bool) {
+        self.focus_mode = on;
+        self.focus_since = ctx.input(|i| i.time);
+        ctx.send_viewport_cmd(ViewportCommand::Fullscreen(on));
+    }
+
+    pub(crate) fn go_home(&mut self) {
+        if self.file_path.is_none() && !self.modified {
+            self.show_home = true;
+        } else {
+            self.run_or_prompt_discard(DiscardAction::Home);
+        }
+    }
+
+    // ----- New files -------------------------------------------------------
+
+    pub(crate) fn create_chapter(&mut self) {
+        match manuscript::new_chapter(&self.working_dir) {
+            Ok(path) => {
+                self.index_dirty = true;
+                self.run_or_prompt_discard(DiscardAction::OpenPath(path));
+            }
+            Err(err) => self.show_tool_message(format!("Could not create chapter: {err}")),
+        }
+    }
+
+    pub(crate) fn create_character(&mut self) {
+        match manuscript::new_character(&self.working_dir) {
+            Ok(path) => {
+                self.index_dirty = true;
+                self.run_or_prompt_discard(DiscardAction::OpenPath(path));
+            }
+            Err(err) => self.show_tool_message(format!("Could not create character: {err}")),
+        }
+    }
+
+    // ----- Sidebar ---------------------------------------------------------
+
+    pub(crate) fn show_sidebar(&mut self, ctx: &Context) {
+        let p = theme::current(ctx);
+        let index = self.index.clone();
+        let current = self.file_path.clone();
+        let open_words = current.as_deref().map(|path| (path, self.current_words));
+        let total = index.manuscript_words(open_words);
+        let outline = if self.file_path.is_some() || !self.content.is_empty() {
+            manuscript::outline(&self.content)
+        } else {
+            Vec::new()
+        };
+        let cursor = self.current_char_index;
+        let mut action = None;
+
+        egui::SidePanel::left("navigator")
+            .resizable(true)
+            .default_width(270.0)
+            .width_range(200.0..=460.0)
+            .frame(
+                egui::Frame::none()
+                    .fill(p.desk)
+                    .inner_margin(egui::Margin::symmetric(10.0, 12.0)),
+            )
+            .show(ctx, |ui| {
+                let name = folder_name(&self.working_dir);
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(&name)
+                            .font(FontId::new(19.0, fonts::family(true, false)))
+                            .color(p.text),
+                    )
+                    .on_hover_text(self.working_dir.display().to_string());
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if quiet_button(ui, "Home", &p)
+                            .on_hover_text("Project home")
+                            .clicked()
+                        {
+                            action = Some(NavAction::Home);
+                        }
+                        if quiet_button(ui, "Open…", &p)
+                            .on_hover_text("Open another project")
+                            .clicked()
+                        {
+                            action = Some(NavAction::PickProject);
+                        }
+                    });
+                });
+                if index.has_chapters_dir {
+                    let chapters = index.chapters.len();
+                    ui.label(
+                        RichText::new(format!(
+                            "{} words · {} chapter{}",
+                            manuscript::group(total),
+                            chapters,
+                            if chapters == 1 { "" } else { "s" }
+                        ))
+                        .size(12.0)
+                        .color(p.muted),
+                    );
+                }
+                ui.add_space(4.0);
+
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false; 2])
+                    .show(ui, |ui| {
+                        if index.has_chapters_dir {
+                            if section(ui, "Chapters", Some("New chapter"), &p) {
+                                action = Some(NavAction::NewChapter);
+                            }
+                            if index.chapters.is_empty() {
+                                hint(ui, "No chapters yet — press + to start one.", &p);
+                            }
+                            for (i, entry) in index.chapters.iter().enumerate() {
+                                let selected = current.as_ref() == Some(&entry.path);
+                                let words = open_words
+                                    .filter(|(path, _)| *path == entry.path)
+                                    .map_or(entry.words, |(_, words)| words);
+                                let label = format!("{}  {}", i + 1, entry.title);
+                                if nav_row(ui, selected, 0.0, &label, Some(short_count(words)), &p)
+                                    .on_hover_text(file_label(&entry.path))
+                                    .clicked()
+                                {
+                                    action = Some(NavAction::Open(entry.path.clone()));
+                                }
+                            }
+                        }
+
+                        if outline.len() > 1 || outline.first().is_some_and(|h| h.level > 1) {
+                            section(ui, "Outline", None, &p);
+                            let active = outline
+                                .iter()
+                                .rposition(|heading| heading.char_index <= cursor);
+                            let min_level = outline.iter().map(|h| h.level).min().unwrap_or(1);
+                            for (i, heading) in outline.iter().enumerate() {
+                                let indent = (heading.level - min_level) as f32 * 12.0;
+                                if nav_row(ui, active == Some(i), indent, &heading.text, None, &p)
+                                    .clicked()
+                                {
+                                    action = Some(NavAction::Jump(heading.char_index));
+                                }
+                            }
+                        }
+
+                        if index.has_characters_dir {
+                            if section(ui, "Characters", Some("New character"), &p) {
+                                action = Some(NavAction::NewCharacter);
+                            }
+                            for entry in &index.characters {
+                                let selected = current.as_ref() == Some(&entry.path);
+                                if nav_row(ui, selected, 0.0, &entry.title, None, &p)
+                                    .on_hover_text(file_label(&entry.path))
+                                    .clicked()
+                                {
+                                    action = Some(NavAction::Open(entry.path.clone()));
+                                }
+                            }
+                        }
+
+                        if !index.notes.is_empty() {
+                            section(ui, "Notes", None, &p);
+                            for entry in &index.notes {
+                                let selected = current.as_ref() == Some(&entry.path);
+                                if nav_row(ui, selected, 0.0, &entry.title, None, &p)
+                                    .on_hover_text(file_label(&entry.path))
+                                    .clicked()
+                                {
+                                    action = Some(NavAction::Open(entry.path.clone()));
+                                }
+                            }
+                        }
+
+                        ui.add_space(10.0);
+                        let structured = index.has_chapters_dir || index.has_characters_dir;
+                        egui::CollapsingHeader::new(
+                            RichText::new("ALL FILES").size(11.0).color(p.muted).strong(),
+                        )
+                        .id_source("all_files")
+                        .default_open(!structured)
+                        .show(ui, |ui| {
+                            if self.working_dir.is_dir() {
+                                let root = self.working_dir.clone();
+                                self.render_entries(ui, &root);
+                            } else {
+                                hint(ui, "This folder is unavailable.", &p);
+                            }
+                        });
+                    });
+            });
+        self.apply_nav_action(action);
+    }
+
+    fn apply_nav_action(&mut self, action: Option<NavAction>) {
+        match action {
+            None => {}
+            Some(NavAction::Open(path)) => {
+                if self.file_path.as_ref() != Some(&path) {
+                    self.run_or_prompt_discard(DiscardAction::OpenPath(path));
+                }
+            }
+            Some(NavAction::Jump(char_index)) => {
+                self.pending_selection = Some((char_index, char_index));
+            }
+            Some(NavAction::NewChapter) => self.create_chapter(),
+            Some(NavAction::NewCharacter) => self.create_character(),
+            Some(NavAction::PickProject) => self.pick_project(),
+            Some(NavAction::OpenProject(path)) => {
+                self.run_or_prompt_discard(DiscardAction::OpenProject(path))
+            }
+            Some(NavAction::NewProject) => self.open_new_project_dialog(),
+            Some(NavAction::BlankPage) => self.run_or_prompt_discard(DiscardAction::NewDocument),
+            Some(NavAction::Home) => self.go_home(),
+        }
+    }
+
+    // ----- Status bar ------------------------------------------------------
+
+    pub(crate) fn show_status_bar(&mut self, ctx: &Context) {
+        let p = theme::current(ctx);
+        let open_words = self.file_path.as_deref().map(|path| (path, self.current_words));
+        let total = self.index.manuscript_words(open_words);
+        let is_chapter = self
+            .file_path
+            .as_ref()
+            .is_some_and(|path| self.index.chapters.iter().any(|e| &e.path == path));
+        let selected_words = (self.selection_start != self.selection_end)
+            .then(|| self.selected_text())
+            .flatten()
+            .map(|text| manuscript::word_count(&text))
+            .filter(|&n| n > 0);
+
+        TopBottomPanel::bottom("status_bar")
+            .frame(
+                egui::Frame::none()
+                    .fill(p.desk)
+                    .inner_margin(egui::Margin::symmetric(12.0, 5.0)),
+            )
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    let small = |text: String| RichText::new(text).size(12.5).color(p.muted);
+                    if self.modified && self.can_save_silently() {
+                        ui.label(RichText::new("Edited").size(12.5).color(p.muted))
+                            .on_hover_text("Saves automatically when you pause");
+                    } else if self.modified {
+                        ui.label(RichText::new("• Edited").size(12.5).color(p.accent))
+                            .on_hover_text("Unsaved changes (Ctrl+S to save)");
+                    } else {
+                        ui.label(RichText::new("Saved").size(12.5).color(p.muted));
+                    }
+                    ui.label(RichText::new(self.document_title()).size(13.0).color(p.text))
+                        .on_hover_text(
+                            self.file_path
+                                .as_ref()
+                                .map(|path| path.display().to_string())
+                                .unwrap_or_else(|| "Not saved yet".into()),
+                        );
+                    if let Some(notice) = &self.sync_notice {
+                        ui.label(small(notice.clone()));
+                    }
+                    if let Some(status) = &self.find_status {
+                        ui.label(small(status.clone()));
+                    }
+
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        let goal = self.config.view.session_goal;
+                        let session = self.session_words;
+                        if goal > 0 {
+                            let done = session.max(0) as f32 / goal as f32;
+                            ui.add(
+                                egui::ProgressBar::new(done.min(1.0))
+                                    .desired_width(90.0)
+                                    .desired_height(6.0)
+                                    .rounding(3.0)
+                                    .fill(p.accent),
+                            )
+                            .on_hover_text(format!(
+                                "Session goal: {} of {} words",
+                                manuscript::group(session.max(0) as usize),
+                                manuscript::group(goal)
+                            ));
+                        }
+                        // Right to left: the first part added sits at the far right.
+                        let sign = if session >= 0 { "+" } else { "−" };
+                        let mut parts = vec![format!(
+                            "{sign}{} this session",
+                            manuscript::group(session.unsigned_abs() as usize)
+                        )];
+                        if self.index.has_chapters_dir {
+                            parts.push(format!("{} in manuscript", manuscript::group(total)));
+                        }
+                        if !self.show_home || self.file_path.is_some() {
+                            parts.push(format!(
+                                "{} words{} · {} min read",
+                                manuscript::group(self.current_words),
+                                if is_chapter { " in chapter" } else { "" },
+                                manuscript::reading_minutes(self.current_words)
+                            ));
+                            if let Some(words) = selected_words {
+                                parts.push(format!("{} selected", manuscript::group(words)));
+                            }
+                            parts.push(format!("Ln {}", self.current_line + 1));
+                        }
+                        parts.reverse();
+                        ui.label(small(parts.join("  ·  ")))
+                            .on_hover_text("Session words count only what you type here");
+                    });
+                });
+            });
+    }
+
+    pub(crate) fn document_title(&self) -> String {
+        match &self.file_path {
+            Some(path) => manuscript::title(&self.content, path),
+            None if self.show_home && !self.modified => "Home".into(),
+            None => "Untitled".into(),
+        }
+    }
+
+    // ----- Home screen -----------------------------------------------------
+
+    pub(crate) fn show_home_screen(&mut self, ui: &mut Ui) {
+        let p = theme::current(ui.ctx());
+        let index = self.index.clone();
+        let screen_height = ui.ctx().screen_rect().height();
+        let mut action = None;
+        egui::ScrollArea::vertical()
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                let width = (ui.available_width() - 48.0).clamp(240.0, 500.0);
+                let side = ((ui.available_width() - width) / 2.0).max(0.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(side);
+                    ui.vertical(|ui| {
+                        ui.set_width(width);
+                        ui.add_space((screen_height * 0.1).max(32.0));
+                        ui.vertical_centered(|ui| {
+                            ui.label(
+                                RichText::new("Quillwright")
+                                    .font(FontId::new(46.0, fonts::family(true, false)))
+                                    .color(p.text),
+                            );
+                            ui.label(
+                                RichText::new("A quiet room for long stories.")
+                                    .font(FontId::new(17.0, fonts::family(false, true)))
+                                    .color(p.muted),
+                            );
+                        });
+                        ui.add_space(32.0);
+
+                        let has_project = index.has_chapters_dir || index.has_characters_dir;
+                        if has_project {
+                            card(ui, &p, |ui| {
+                                ui.label(
+                                    RichText::new("CURRENT PROJECT").size(11.0).color(p.muted),
+                                );
+                                ui.label(
+                                    RichText::new(folder_name(&self.working_dir))
+                                        .font(FontId::new(24.0, fonts::family(true, false)))
+                                        .color(p.text),
+                                );
+                                ui.label(
+                                    RichText::new(format!(
+                                        "{} words · {} chapters · {} characters",
+                                        manuscript::group(index.manuscript_words(None)),
+                                        index.chapters.len(),
+                                        index.characters.len()
+                                    ))
+                                    .size(13.0)
+                                    .color(p.muted),
+                                );
+                                ui.add_space(14.0);
+                                let (label, target) = match index.chapters.last() {
+                                    Some(last) => (
+                                        format!("Continue writing  “{}”", last.title),
+                                        Some(NavAction::Open(last.path.clone())),
+                                    ),
+                                    None => {
+                                        ("Write the first chapter".into(), Some(NavAction::NewChapter))
+                                    }
+                                };
+                                if ui
+                                    .add_sized(
+                                        [ui.available_width(), 38.0],
+                                        Button::new(RichText::new(label).size(15.0).color(p.page))
+                                            .fill(p.accent),
+                                    )
+                                    .clicked()
+                                {
+                                    action = target;
+                                }
+                            });
+                            ui.add_space(16.0);
+                        }
+
+                        ui.columns(3, |cols| {
+                            let big = |text: &str| RichText::new(text).size(14.0);
+                            if cols[0]
+                                .add_sized([cols[0].available_width(), 34.0], Button::new(big("New Project…")))
+                                .clicked()
+                            {
+                                action = Some(NavAction::NewProject);
+                            }
+                            if cols[1]
+                                .add_sized([cols[1].available_width(), 34.0], Button::new(big("Open Project…")))
+                                .clicked()
+                            {
+                                action = Some(NavAction::PickProject);
+                            }
+                            if cols[2]
+                                .add_sized([cols[2].available_width(), 34.0], Button::new(big("Blank Page")))
+                                .clicked()
+                            {
+                                action = Some(NavAction::BlankPage);
+                            }
+                        });
+
+                        let recent: Vec<_> = self
+                            .config
+                            .recent_projects
+                            .iter()
+                            .filter(|path| **path != self.working_dir && path.is_dir())
+                            .cloned()
+                            .collect();
+                        if !recent.is_empty() {
+                            ui.add_space(12.0);
+                            section(ui, "Recent projects", None, &p);
+                            for path in recent {
+                                let parent = path
+                                    .parent()
+                                    .map(|parent| parent.display().to_string())
+                                    .unwrap_or_default();
+                                if nav_row(ui, false, 0.0, &folder_name(&path), Some(parent), &p)
+                                    .clicked()
+                                {
+                                    action = Some(NavAction::OpenProject(path));
+                                }
+                            }
+                        }
+
+                        ui.add_space(28.0);
+                        ui.vertical_centered(|ui| {
+                            ui.label(
+                                RichText::new("F11 focus mode   ·   Ctrl+B sidebar   ·   Ctrl+H all shortcuts")
+                                    .size(12.0)
+                                    .color(p.muted),
+                            );
+                        });
+                        ui.add_space(24.0);
+                    });
+                });
+            });
+        self.apply_nav_action(action);
+    }
+
+    // ----- The page --------------------------------------------------------
+
+    pub(crate) fn show_editor(&mut self, ui: &mut Ui, ctx: &Context) {
+        let viewport_height = ui.available_height();
+        // Paint the entire viewport, including scrollbar and empty document space.
+        ui.painter()
+            .rect_filled(ui.max_rect(), 0.0, ui.visuals().extreme_bg_color);
+        self.editor_line_height = ui.text_style_height(&TextStyle::Monospace).max(1.0);
+        let mut editor_area = egui::ScrollArea::vertical()
+            .id_source("page")
+            .auto_shrink([false; 2]);
+        let mut requested_offset = None;
+        if let Some(offset) = self.pending_editor_scroll.take() {
+            requested_offset = Some(offset);
+            editor_area = editor_area.vertical_scroll_offset(offset);
+        }
+        let scroll = editor_area.show(ui, |ui| {
+            let response = self.editor.show(
+                ui,
+                &mut self.content,
+                self.pending_selection.take(),
+                &self.config.editor,
+                viewport_height,
+            );
+            self.editor_has_focus = response.has_focus();
+            let range = self.editor.selection;
+            let sorted = range.sorted();
+            self.current_char_index = range.primary.index;
+            self.current_line = self
+                .content
+                .chars()
+                .take(self.current_char_index)
+                .filter(|&ch| ch == '\n')
+                .count();
+            self.selection_start = sorted[0].index;
+            self.selection_end = sorted[1].index;
+            if response.changed() {
+                self.update_modified_state();
+            }
+            let typography = fonts::typography(ctx);
+            self.editor_line_height = typography.size * typography.line_height;
+        });
+        if let Some(target) = requested_offset {
+            let max_offset = (scroll.content_size.y - scroll.inner_rect.height()).max(0.0);
+            let clamped = target.clamp(0.0, max_offset);
+            if (scroll.state.offset.y - clamped).abs() > 1.0 {
+                self.pending_editor_scroll = Some(clamped);
+            }
+        }
+        let visible_height = scroll.inner_rect.height();
+        if visible_height > 0.0 {
+            let lines = (visible_height / self.editor_line_height.max(1.0)).max(1.0) as usize;
+            self.visible_editor_lines = lines.max(1);
+        }
+    }
+
+    // ----- Focus mode ------------------------------------------------------
+
+    pub(crate) fn show_focus_overlay(&mut self, ctx: &Context) {
+        let p = theme::current(ctx);
+        let faint = p.muted.gamma_multiply(0.75);
+        egui::Area::new(egui::Id::new("focus_stats"))
+            .anchor(Align2::RIGHT_BOTTOM, egui::vec2(-20.0, -14.0))
+            .interactable(false)
+            .show(ctx, |ui| {
+                let mut text = format!("{} words", manuscript::group(self.current_words));
+                let goal = self.config.view.session_goal;
+                if goal > 0 {
+                    text.push_str(&format!(
+                        "  ·  {} / {} this session",
+                        manuscript::group(self.session_words.max(0) as usize),
+                        manuscript::group(goal)
+                    ));
+                }
+                if self.modified {
+                    text.push_str("  ·  unsaved");
+                }
+                ui.label(RichText::new(text).size(12.0).color(faint));
+            });
+        // A short hint on how to leave, fading out after a few seconds.
+        let elapsed = ctx.input(|i| i.time) - self.focus_since;
+        if elapsed < 4.0 {
+            let alpha = (1.0 - (elapsed as f32 - 2.5).max(0.0) / 1.5).clamp(0.0, 1.0);
+            egui::Area::new(egui::Id::new("focus_hint"))
+                .anchor(Align2::CENTER_TOP, egui::vec2(0.0, 16.0))
+                .interactable(false)
+                .show(ctx, |ui| {
+                    ui.label(
+                        RichText::new("Focus mode — press F11 or Esc to leave")
+                            .size(12.5)
+                            .color(faint.gamma_multiply(alpha)),
+                    );
+                });
+            ctx.request_repaint_after(std::time::Duration::from_millis(50));
+        }
+    }
+
+    // ----- Bookkeeping after each frame ------------------------------------
+
+    pub(crate) fn after_frame(&mut self, ctx: &Context) {
+        if self.content != self.counted_text {
+            self.saving.last_edit = ctx.input(|i| i.time);
+            let words = manuscript::word_count(&self.content);
+            if !self.external_load {
+                self.session_words += words as i64 - self.current_words as i64;
+            }
+            self.current_words = words;
+            self.counted_text = self.content.clone();
+        }
+        self.external_load = false;
+
+        let title = format!(
+            "{}{} — {} — Quillwright",
+            if self.modified { "• " } else { "" },
+            self.document_title(),
+            folder_name(&self.working_dir)
+        );
+        if title != self.window_title {
+            ctx.send_viewport_cmd(ViewportCommand::Title(title.clone()));
+            self.window_title = title;
+        }
+    }
+
+    pub(crate) fn remember_project(&mut self, root: &Path) {
+        let recent = &mut self.config.recent_projects;
+        recent.retain(|path| path != root);
+        recent.insert(0, root.to_path_buf());
+        recent.truncate(8);
+    }
+}
+
+// ----- Small widgets ---------------------------------------------------------
+
+fn folder_name(path: &Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.display().to_string())
+}
+
+fn file_label(path: &Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_default()
+}
+
+fn short_count(words: usize) -> String {
+    if words >= 10_000 {
+        format!("{:.1}k", words as f32 / 1000.0)
+    } else {
+        manuscript::group(words)
+    }
+}
+
+fn quiet_button(ui: &mut Ui, text: &str, p: &theme::Palette) -> egui::Response {
+    ui.add(Button::new(RichText::new(text).size(12.5).color(p.muted)).frame(false))
+        .on_hover_cursor(CursorIcon::PointingHand)
+}
+
+/// An uppercase section label with an optional "+" action. Returns true when clicked.
+fn section(ui: &mut Ui, label: &str, action: Option<&str>, p: &theme::Palette) -> bool {
+    ui.add_space(12.0);
+    let mut clicked = false;
+    ui.horizontal(|ui| {
+        ui.label(
+            RichText::new(label.to_uppercase())
+                .size(11.0)
+                .strong()
+                .color(p.muted),
+        );
+        if let Some(tip) = action {
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                clicked = ui
+                    .add(Button::new(RichText::new("+").size(16.0).color(p.muted)).frame(false))
+                    .on_hover_text(tip)
+                    .on_hover_cursor(CursorIcon::PointingHand)
+                    .clicked();
+            });
+        }
+    });
+    clicked
+}
+
+fn hint(ui: &mut Ui, text: &str, p: &theme::Palette) {
+    ui.label(RichText::new(text).size(12.5).italics().color(p.muted));
+}
+
+fn card(ui: &mut Ui, p: &theme::Palette, add: impl FnOnce(&mut Ui)) {
+    egui::Frame::none()
+        .fill(theme::mix(p.page, p.desk, 0.6))
+        .stroke(egui::Stroke::new(1.0_f32, theme::mix(p.desk, p.text, 0.1)))
+        .rounding(12.0)
+        .inner_margin(egui::Margin::same(20.0))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            add(ui);
+        });
+}
+
+/// A full-width navigation row: title on the left, muted detail on the right.
+fn nav_row(
+    ui: &mut Ui,
+    selected: bool,
+    indent: f32,
+    title: &str,
+    trailing: Option<String>,
+    p: &theme::Palette,
+) -> egui::Response {
+    let height = 26.0;
+    let (rect, response) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), height),
+        egui::Sense::click(),
+    );
+    if ui.is_rect_visible(rect) {
+        let background = if selected {
+            Some(theme::mix(p.desk, p.accent, 0.2))
+        } else if response.hovered() {
+            Some(theme::mix(p.desk, p.text, 0.07))
+        } else {
+            None
+        };
+        if let Some(color) = background {
+            ui.painter().rect_filled(rect, 6.0, color);
+        }
+        if selected {
+            let bar = egui::Rect::from_min_size(
+                rect.min + egui::vec2(0.0, 6.0),
+                egui::vec2(3.0, height - 12.0),
+            );
+            ui.painter().rect_filled(bar, 1.5, p.accent);
+        }
+        let mut right = rect.right() - 8.0;
+        if let Some(text) = trailing {
+            let mut job = LayoutJob::simple_singleline(text, FontId::proportional(12.0), p.muted);
+            job.wrap = TextWrapping {
+                max_width: (rect.width() * 0.45).max(20.0),
+                max_rows: 1,
+                break_anywhere: true,
+                overflow_character: Some('…'),
+            };
+            let galley = ui.fonts(|f| f.layout_job(job));
+            right -= galley.size().x;
+            let pos = egui::pos2(right, rect.center().y - galley.size().y / 2.0);
+            ui.painter().galley(pos, galley, p.muted);
+            right -= 10.0;
+        }
+        let left = rect.left() + 10.0 + indent;
+        let mut job = LayoutJob::simple_singleline(
+            title.to_owned(),
+            FontId::proportional(14.0),
+            if selected { p.text } else { theme::mix(p.text, p.muted, 0.25) },
+        );
+        job.wrap = TextWrapping {
+            max_width: (right - left).max(10.0),
+            max_rows: 1,
+            break_anywhere: true,
+            overflow_character: Some('…'),
+        };
+        let galley = ui.fonts(|f| f.layout_job(job));
+        let pos = egui::pos2(left, rect.center().y - galley.size().y / 2.0);
+        ui.painter().galley(pos, galley, Color32::PLACEHOLDER);
+    }
+    response.on_hover_cursor(CursorIcon::PointingHand)
+}

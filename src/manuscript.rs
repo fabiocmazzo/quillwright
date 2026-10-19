@@ -1,0 +1,325 @@
+//! Writer-facing view of a project folder: chapters, characters, notes, word counts.
+//! Everything is derived from plain Markdown files; nothing is stored.
+use std::{
+    fs,
+    io::{self, Write},
+    path::{Path, PathBuf},
+};
+
+pub const CHAPTERS_DIR: &str = "chapters";
+pub const CHARACTERS_DIR: &str = "characters";
+
+/// Count prose words, ignoring Markdown punctuation and HTML comments.
+pub fn word_count(text: &str) -> usize {
+    let mut count = 0;
+    let mut rest = text;
+    loop {
+        let (visible, next) = match rest.find("<!--") {
+            Some(start) => {
+                let after = &rest[start + 4..];
+                let end = after.find("-->").map_or(after.len(), |e| e + 3);
+                (&rest[..start], Some(&after[end.min(after.len())..]))
+            }
+            None => (rest, None),
+        };
+        count += visible
+            .split_whitespace()
+            .filter(|token| token.chars().any(char::is_alphanumeric))
+            .count();
+        match next {
+            Some(next) => rest = next,
+            None => return count,
+        }
+    }
+}
+
+/// Minutes to read aloud-ish at a typical silent reading pace.
+pub fn reading_minutes(words: usize) -> usize {
+    words.div_ceil(250)
+}
+
+/// Thousands separators for display: 12345 -> "12,345".
+pub fn group(n: usize) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, ch) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    out
+}
+
+/// First Markdown heading, or a readable version of the file name.
+pub fn title(text: &str, path: &Path) -> String {
+    text.lines()
+        .map(str::trim)
+        .find_map(|line| {
+            let stripped = line.trim_start_matches('#');
+            (line.starts_with('#') && stripped.starts_with(' ') && !stripped.trim().is_empty())
+                .then(|| stripped.trim().trim_end_matches('#').trim().to_string())
+        })
+        .unwrap_or_else(|| pretty_name(path))
+}
+
+fn pretty_name(path: &Path) -> String {
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let stem = stem.trim_start_matches(|c: char| c.is_ascii_digit() || c == '-' || c == '_');
+    let words: Vec<String> = stem
+        .split(['-', '_'])
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let mut chars = w.chars();
+            chars
+                .next()
+                .map(|c| c.to_uppercase().chain(chars).collect())
+                .unwrap_or_default()
+        })
+        .collect();
+    if words.is_empty() {
+        path.file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default()
+    } else {
+        words.join(" ")
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Entry {
+    pub path: PathBuf,
+    pub title: String,
+    pub words: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Index {
+    pub chapters: Vec<Entry>,
+    pub characters: Vec<Entry>,
+    /// Markdown files at the project root (world rules, outlines, AGENT.md, ...).
+    pub notes: Vec<Entry>,
+    pub has_chapters_dir: bool,
+    pub has_characters_dir: bool,
+}
+
+impl Index {
+    pub fn build(root: &Path) -> Self {
+        let chapters_dir = root.join(CHAPTERS_DIR);
+        let characters_dir = root.join(CHARACTERS_DIR);
+        Index {
+            chapters: entries(&chapters_dir),
+            characters: entries(&characters_dir),
+            notes: entries(root),
+            has_chapters_dir: chapters_dir.is_dir(),
+            has_characters_dir: characters_dir.is_dir(),
+        }
+    }
+
+    /// Words across all chapters, using `live` text for the open file if given.
+    pub fn manuscript_words(&self, open: Option<(&Path, usize)>) -> usize {
+        self.chapters
+            .iter()
+            .map(|e| match open {
+                Some((path, words)) if path == e.path => words,
+                _ => e.words,
+            })
+            .sum()
+    }
+}
+
+fn is_markdown(path: &Path) -> bool {
+    path.is_file()
+        && path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown"))
+}
+
+fn entries(dir: &Path) -> Vec<Entry> {
+    let Ok(read) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut paths: Vec<PathBuf> = read
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| is_markdown(p))
+        .collect();
+    paths.sort();
+    paths
+        .into_iter()
+        .map(|path| {
+            let text = fs::read_to_string(&path).unwrap_or_default();
+            Entry {
+                title: title(&text, &path),
+                words: word_count(&text),
+                path,
+            }
+        })
+        .collect()
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Heading {
+    pub level: usize,
+    pub text: String,
+    /// Character index of the start of the heading line.
+    pub char_index: usize,
+}
+
+/// ATX headings outside fenced code blocks.
+pub fn outline(text: &str) -> Vec<Heading> {
+    let mut headings = Vec::new();
+    let mut chars = 0;
+    let mut fence: Option<&str> = None;
+    for line in text.split_inclusive('\n') {
+        let trimmed = line.trim();
+        if let Some(marker) = fence {
+            if trimmed.starts_with(marker) {
+                fence = None;
+            }
+        } else if trimmed.starts_with("```") {
+            fence = Some("```");
+        } else if trimmed.starts_with("~~~") {
+            fence = Some("~~~");
+        } else if line.starts_with('#') {
+            let level = line.chars().take_while(|&c| c == '#').count();
+            let rest = &trimmed[level..];
+            if level <= 6 && rest.starts_with(' ') && !rest.trim().is_empty() {
+                headings.push(Heading {
+                    level,
+                    text: rest.trim().trim_end_matches('#').trim().to_string(),
+                    char_index: chars,
+                });
+            }
+        }
+        chars += line.chars().count();
+    }
+    headings
+}
+
+fn create_file(path: &Path, content: &str) -> io::Result<PathBuf> {
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?;
+    file.write_all(content.as_bytes())?;
+    Ok(path.to_owned())
+}
+
+/// Create `chapters/NNN-chapter-N.md` after the highest existing number.
+pub fn new_chapter(root: &Path) -> io::Result<PathBuf> {
+    let dir = root.join(CHAPTERS_DIR);
+    fs::create_dir_all(&dir)?;
+    let mut highest = 0;
+    let mut width = 3;
+    for entry in fs::read_dir(&dir)?.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let digits: String = name.chars().take_while(char::is_ascii_digit).collect();
+        if let Ok(n) = digits.parse::<usize>() {
+            highest = highest.max(n);
+            width = width.max(digits.len());
+        }
+    }
+    let mut n = highest + 1;
+    loop {
+        let path = dir.join(format!("{n:0width$}-chapter-{n}.md"));
+        match create_file(&path, &format!("# Chapter {n}\n\n")) {
+            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => n += 1,
+            result => return result,
+        }
+    }
+}
+
+/// Create `characters/new-character[-N].md` from the character sheet template.
+pub fn new_character(root: &Path) -> io::Result<PathBuf> {
+    let dir = root.join(CHARACTERS_DIR);
+    fs::create_dir_all(&dir)?;
+    let template = include_str!("../assets/project-template/example-character.md");
+    let body = template
+        .split_once('\n')
+        .map_or("", |(_, rest)| rest)
+        .trim_start_matches('\n');
+    let body = body
+        .split_once("\n\n")
+        .filter(|(first, _)| first.starts_with('>') || first.trim().is_empty())
+        .map_or(body, |(_, rest)| rest);
+    let content = format!("# New character\n\n{body}");
+    for n in 1.. {
+        let name = if n == 1 {
+            "new-character.md".to_string()
+        } else {
+            format!("new-character-{n}.md")
+        };
+        match create_file(&dir.join(name), &content) {
+            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
+            result => return result,
+        }
+    }
+    unreachable!()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn counts_prose_words_only() {
+        assert_eq!(word_count("# Opening\n\nShe *ran* — fast.\n- item"), 5);
+        assert_eq!(word_count("<!-- template note -->\n# Title"), 1);
+        assert_eq!(word_count("a <!-- x --> b <!-- unterminated"), 2);
+        assert_eq!(word_count("Olá, coração! 你好"), 3);
+        assert_eq!(word_count(""), 0);
+    }
+
+    #[test]
+    fn titles_and_grouping() {
+        let path = Path::new("chapters/002-the-crossing.md");
+        assert_eq!(title("# The Crossing ##\ntext", path), "The Crossing");
+        assert_eq!(title("no heading", path), "The Crossing");
+        assert_eq!(title("#hashtag", Path::new("x/maria_silva.md")), "Maria Silva");
+        assert_eq!(group(0), "0");
+        assert_eq!(group(1234567), "1,234,567");
+        assert_eq!(reading_minutes(1), 1);
+        assert_eq!(reading_minutes(500), 2);
+    }
+
+    #[test]
+    fn outline_skips_code_fences() {
+        let text = "# One\ntext\n```\n# not a heading\n```\n## Scene ✦\n";
+        let headings = outline(text);
+        assert_eq!(headings.len(), 2);
+        assert_eq!(headings[1].level, 2);
+        assert_eq!(headings[1].text, "Scene ✦");
+        assert_eq!(headings[1].char_index, text.find("## Scene").unwrap());
+    }
+
+    #[test]
+    fn index_and_new_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        fs::create_dir(root.join("chapters")).unwrap();
+        fs::write(root.join("chapters/001-opening.md"), "# Opening\n\none two").unwrap();
+        fs::write(root.join("chapters/notes.txt"), "ignored").unwrap();
+        fs::write(root.join("world-rules.md"), "# World rules").unwrap();
+        let chapter = new_chapter(root).unwrap();
+        assert!(chapter.ends_with("chapters/002-chapter-2.md"));
+        let character = new_character(root).unwrap();
+        let second = new_character(root).unwrap();
+        assert!(second.ends_with("characters/new-character-2.md"));
+        assert!(fs::read_to_string(&character)
+            .unwrap()
+            .starts_with("# New character\n\n## Identity"));
+
+        let index = Index::build(root);
+        let titles: Vec<_> = index.chapters.iter().map(|e| e.title.as_str()).collect();
+        assert_eq!(titles, ["Opening", "Chapter 2"]);
+        assert_eq!(index.characters.len(), 2);
+        assert_eq!(index.notes.len(), 1);
+        assert_eq!(index.manuscript_words(None), 5);
+        let open = root.join("chapters/001-opening.md");
+        assert_eq!(index.manuscript_words(Some((&open, 100))), 102);
+    }
+}

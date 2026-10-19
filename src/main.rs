@@ -1,9 +1,18 @@
 use directories::ProjectDirs;
 use eframe::egui;
-use egui::text::{CCursor, CCursorRange};
-use egui::{Align2, CentralPanel, Color32, Context, TextEdit, TextStyle, TopBottomPanel, Visuals};
-use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
-use egui_extras::StripBuilder;
+use egui::{Align2, CentralPanel, Color32, Context};
+mod assistant;
+mod assistant_ui;
+mod editor;
+mod manuscript;
+mod theme;
+mod file_sync;
+mod fonts;
+mod history;
+mod live_preview;
+mod project;
+mod saving;
+mod workspace;
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -22,6 +31,7 @@ fn main() -> eframe::Result<()> {
                 content: content.clone(),
                 original_content: content,
                 file_path: Some(fs::canonicalize(&cli_path).unwrap_or_else(|_| cli_path.clone())),
+                show_home: false,
                 ..Default::default()
             },
             Err(e) => {
@@ -34,20 +44,23 @@ fn main() -> eframe::Result<()> {
     };
     let options = eframe::NativeOptions::default();
     eframe::run_native(
-        "md-echo - edit/preview",
+        "Quillwright",
         options,
-        Box::new(move |_cc| Box::new(app)),
+        Box::new(move |cc| {
+            fonts::install(&cc.egui_ctx, &app.config.editor);
+            Box::new(app)
+        }),
     )
 }
 
 struct MarkdownApp {
     content: String,
+    editor: editor::Editor,
     original_content: String,
     file_path: Option<PathBuf>,
     working_dir: PathBuf,
     config_path: Option<PathBuf>,
     config: AppConfig,
-    cache: CommonMarkCache,
     modified: bool,
     show_exit_confirm: bool,
     pending_new: bool,
@@ -60,11 +73,7 @@ struct MarkdownApp {
     tool_output: Option<String>,
     show_tool_output: bool,
     theme_applied: bool,
-    scroll_left: f32,
-    scroll_right: f32,
     current_line: usize,
-    cursor_fraction: f32,
-    preview_max_scroll: f32,
     editor_has_focus: bool,
     current_char_index: usize,
     selection_start: usize,
@@ -89,6 +98,34 @@ struct MarkdownApp {
     visible_editor_lines: usize,
     editor_line_height: f32,
     pending_discard_action: Option<DiscardAction>,
+    new_project: Option<project::NewProject>,
+    /// Background watcher that reports external changes (for example, from agents).
+    monitor: Option<file_sync::Monitor>,
+    monitor_target: Option<file_sync::Target>,
+    /// The open file no longer exists on disk; saving recreates it.
+    base_missing: bool,
+    /// Disk contents that conflict with unsaved edits in the editor.
+    disk_conflict: Option<file_sync::Disk>,
+    sync_notice: Option<String>,
+    window_focused: bool,
+    // Writing workspace state.
+    index: manuscript::Index,
+    index_dirty: bool,
+    show_home: bool,
+    focus_mode: bool,
+    focus_since: f64,
+    pending_focus_toggle: bool,
+    /// Net words typed in the editor since launch (external reloads excluded).
+    session_words: i64,
+    current_words: usize,
+    counted_text: String,
+    /// The buffer was replaced by loading a file, not by typing.
+    external_load: bool,
+    window_title: String,
+    assistant: assistant_ui::AssistantState,
+    saving: saving::SavingState,
+    /// Where version history is kept; None if no data directory is available.
+    history_root: Option<PathBuf>,
 }
 
 #[derive(Clone)]
@@ -96,13 +133,19 @@ enum DiscardAction {
     NewDocument,
     OpenDialog,
     OpenPath(PathBuf),
+    CreateProject(PathBuf),
+    OpenProject(PathBuf),
+    Home,
 }
 
 impl DiscardAction {
     fn description(&self) -> String {
         match self {
             DiscardAction::NewDocument => "starting a new document".to_string(),
+            DiscardAction::Home => "going to the project home".to_string(),
             DiscardAction::OpenDialog => "opening another file".to_string(),
+            DiscardAction::CreateProject(path) => format!("creating project {}", path.display()),
+            DiscardAction::OpenProject(path) => format!("opening project {}", path.display()),
             DiscardAction::OpenPath(path) => {
                 let name = path
                     .file_name()
@@ -120,6 +163,28 @@ struct AppConfig {
     working_dir: Option<PathBuf>,
     theme: ThemeConfig,
     tools: ToolsConfig,
+    editor: editor::EditorConfig,
+    view: ViewConfig,
+    assistant: assistant::AssistantConfig,
+    /// Most recently opened projects, newest first.
+    recent_projects: Vec<PathBuf>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
+struct ViewConfig {
+    sidebar: bool,
+    /// Words to write per session; 0 hides the goal.
+    session_goal: usize,
+}
+
+impl Default for ViewConfig {
+    fn default() -> Self {
+        Self {
+            sidebar: true,
+            session_goal: 0,
+        }
+    }
 }
 
 impl Default for AppConfig {
@@ -128,6 +193,10 @@ impl Default for AppConfig {
             working_dir: None,
             theme: ThemeConfig::default(),
             tools: ToolsConfig::default(),
+            editor: editor::EditorConfig::default(),
+            view: ViewConfig::default(),
+            assistant: assistant::AssistantConfig::default(),
+            recent_projects: Vec::new(),
         }
     }
 }
@@ -146,57 +215,13 @@ struct ThemeConfig {
 impl Default for ThemeConfig {
     fn default() -> Self {
         Self {
-            base: "dark".to_string(),
+            base: "night".to_string(),
             background: None,
             panel: None,
             text: None,
             accent: None,
             hyperlink: None,
         }
-    }
-}
-
-impl ThemeConfig {
-    fn to_visuals(&self) -> Visuals {
-        let mut visuals = match self.base.to_lowercase().as_str() {
-            "light" => Visuals::light(),
-            _ => Visuals::dark(),
-        };
-
-        if let Some(color) = self
-            .background
-            .as_deref()
-            .and_then(|value| parse_color(value))
-        {
-            visuals.window_fill = color;
-            visuals.panel_fill = color;
-            visuals.extreme_bg_color = color;
-        }
-
-        if let Some(color) = self.panel.as_deref().and_then(|value| parse_color(value)) {
-            visuals.panel_fill = color;
-        }
-
-        if let Some(color) = self.text.as_deref().and_then(|value| parse_color(value)) {
-            visuals.override_text_color = Some(color);
-        }
-
-        if let Some(color) = self.accent.as_deref().and_then(|value| parse_color(value)) {
-            visuals.selection.bg_fill = color;
-            visuals.widgets.active.bg_fill = color;
-            visuals.widgets.hovered.bg_fill = color;
-            visuals.hyperlink_color = color;
-        }
-
-        if let Some(color) = self
-            .hyperlink
-            .as_deref()
-            .and_then(|value| parse_color(value))
-        {
-            visuals.hyperlink_color = color;
-        }
-
-        visuals
     }
 }
 
@@ -252,12 +277,12 @@ impl Default for MarkdownApp {
         let working_dir = MarkdownApp::initial_working_directory(&mut config);
         let app = Self {
             content: String::new(),
+            editor: editor::Editor::default(),
             original_content: String::new(),
             file_path: None,
             working_dir,
             config_path,
             config,
-            cache: CommonMarkCache::default(),
             modified: false,
             show_exit_confirm: false,
             pending_new: false,
@@ -270,11 +295,7 @@ impl Default for MarkdownApp {
             tool_output: None,
             show_tool_output: false,
             theme_applied: false,
-            scroll_left: 0.0,
-            scroll_right: 0.0,
             current_line: 0,
-            cursor_fraction: 0.0,
-            preview_max_scroll: 0.0,
             editor_has_focus: false,
             current_char_index: 0,
             selection_start: 0,
@@ -299,6 +320,27 @@ impl Default for MarkdownApp {
             visible_editor_lines: 40,
             editor_line_height: 16.0,
             pending_discard_action: None,
+            new_project: None,
+            monitor: None,
+            monitor_target: None,
+            base_missing: false,
+            disk_conflict: None,
+            sync_notice: None,
+            window_focused: true,
+            index: manuscript::Index::default(),
+            index_dirty: true,
+            show_home: true,
+            focus_mode: false,
+            focus_since: 0.0,
+            pending_focus_toggle: false,
+            session_words: 0,
+            current_words: 0,
+            counted_text: String::new(),
+            external_load: true,
+            window_title: String::new(),
+            assistant: assistant_ui::AssistantState::default(),
+            saving: saving::SavingState::default(),
+            history_root: history::default_root(),
         };
 
         if app
@@ -317,20 +359,52 @@ impl Default for MarkdownApp {
 impl eframe::App for MarkdownApp {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         self.ensure_theme(ctx);
-        // Handle hotkeys
+        self.sync_with_disk(ctx);
+        self.poll_assistant();
+        // Closing the window: save first, or ask if that is not possible.
+        if ctx.input(|i| i.viewport().close_requested()) && !self.save_before_leaving() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            if self.disk_conflict.is_none() {
+                self.show_exit_confirm = true;
+            }
+        }
+        // Handle hotkeys. Actions that need the context run after the input lock is released.
+        let (mut new_chapter, mut save, mut text_delta) = (false, false, 0.0);
         ctx.input(|i| {
             if i.key_pressed(egui::Key::H) && i.modifiers.ctrl {
                 self.show_help_overlay = !self.show_help_overlay;
             }
             if i.key_pressed(egui::Key::Q) && i.modifiers.ctrl {
-                if self.modified {
-                    self.show_exit_confirm = true;
-                } else {
-                    self.pending_exit = true;
-                }
+                self.pending_exit = true;
             }
             if i.key_pressed(egui::Key::N) && i.modifiers.ctrl {
-                self.pending_new = true;
+                if i.modifiers.shift {
+                    new_chapter = true;
+                } else {
+                    self.pending_new = true;
+                }
+            }
+            if i.key_pressed(egui::Key::F11)
+                || (self.focus_mode && i.key_pressed(egui::Key::Escape))
+            {
+                self.pending_focus_toggle = true;
+            }
+            if i.key_pressed(egui::Key::K) && i.modifiers.ctrl {
+                self.toggle_assistant();
+            }
+            if i.key_pressed(egui::Key::B) && i.modifiers.ctrl {
+                self.config.view.sidebar = !self.config.view.sidebar;
+                save = true;
+            }
+            if i.key_pressed(egui::Key::T) && i.modifiers.ctrl && i.modifiers.shift {
+                self.config.editor.typewriter = !self.config.editor.typewriter;
+                save = true;
+            }
+            if i.key_pressed(egui::Key::CloseBracket) && i.modifiers.ctrl {
+                text_delta += 1.0;
+            }
+            if i.key_pressed(egui::Key::OpenBracket) && i.modifiers.ctrl {
+                text_delta -= 1.0;
             }
             if i.key_pressed(egui::Key::O) && i.modifiers.ctrl {
                 self.pending_open = true;
@@ -363,7 +437,12 @@ impl eframe::App for MarkdownApp {
                 self.focus_replace_field = true;
             }
             if i.key_pressed(egui::Key::D) && i.modifiers.ctrl {
-                self.pending_delete_line = true;
+                if i.modifiers.shift {
+                    self.config.editor.dim_paragraphs = !self.config.editor.dim_paragraphs;
+                    save = true;
+                } else {
+                    self.pending_delete_line = true;
+                }
             }
             if i.key_pressed(egui::Key::PageUp) {
                 self.pending_page_up = true;
@@ -379,266 +458,52 @@ impl eframe::App for MarkdownApp {
             }
         });
 
-        // ==== MENU BAR ====
-        TopBottomPanel::top("menu_bar").show(ctx, |ui| {
-            egui::menu::bar(ui, |ui| {
-                ui.menu_button("File", |ui| {
-                    if ui.button("New").clicked() {
-                        self.run_or_prompt_discard(DiscardAction::NewDocument);
-                        ui.close_menu();
-                    }
+        if new_chapter {
+            self.create_chapter();
+        }
+        if save {
+            self.save_config();
+        }
+        if text_delta != 0.0 {
+            self.change_text_size(ctx, text_delta);
+        }
+        if self.pending_focus_toggle {
+            self.pending_focus_toggle = false;
+            self.set_focus_mode(ctx, !self.focus_mode);
+        }
 
-                    if ui.button("Open").clicked() {
-                        self.run_or_prompt_discard(DiscardAction::OpenDialog);
-                        ui.close_menu();
-                    }
+        self.run_pending_actions();
+        if self.index_dirty {
+            self.index = manuscript::Index::build(&self.working_dir);
+            self.index_dirty = false;
+        }
 
-                    if ui.button("Save").clicked() {
-                        self.save_file(false);
-                        ui.close_menu();
-                    }
-
-                    if ui.button("Save As...").clicked() {
-                        self.save_file(true);
-                        ui.close_menu();
-                    }
-
-                    ui.separator();
-
-                    if ui.button("Exit").clicked() {
-                        if self.modified {
-                            self.show_exit_confirm = true;
-                        } else {
-                            std::process::exit(0);
-                        }
-                        ui.close_menu();
-                    }
-                });
-
-                ui.menu_button("Tools", |ui| {
-                    if ui.button("Lint Markdown	Ctrl+Shift+L").clicked() {
-                        self.pending_lint = true;
-                        ui.close_menu();
-                    }
-                    if ui.button("Format Markdown	Ctrl+Shift+F").clicked() {
-                        self.pending_format = true;
-                        ui.close_menu();
-                    }
-                });
-            });
-        });
-
-        // ==== CENTRAL PANEL ====
-        CentralPanel::default().show(ctx, |ui| {
-            // Handle pending actions from hotkeys
-            if self.pending_exit {
-                self.pending_exit = false;
-                std::process::exit(0);
+        if !self.focus_mode {
+            self.show_menu_bar(ctx);
+            self.show_status_bar(ctx);
+            if self.config.view.sidebar {
+                self.show_sidebar(ctx);
             }
-            if self.pending_new {
-                self.pending_new = false;
-                self.run_or_prompt_discard(DiscardAction::NewDocument);
+            if self.assistant.open {
+                self.show_assistant_panel(ctx);
             }
-            if self.pending_open {
-                self.pending_open = false;
-                self.run_or_prompt_discard(DiscardAction::OpenDialog);
-            }
-            if self.pending_save {
-                self.pending_save = false;
-                self.save_file(false);
-            }
-            if self.pending_save_as {
-                self.pending_save_as = false;
-                self.save_file(true);
-            }
-            if self.pending_save_all {
-                self.pending_save_all = false;
-                self.save_file(false);
-            }
-            if self.pending_lint {
-                self.pending_lint = false;
-                self.run_lint_tool();
-            }
-            if self.pending_format {
-                self.pending_format = false;
-                self.run_format_tool();
-            }
-            if self.pending_delete_line {
-                self.pending_delete_line = false;
-                self.delete_current_line();
-            }
-            if self.pending_find_next {
-                self.pending_find_next = false;
-                self.queue_find_next(true);
-            }
-            if self.pending_find_previous {
-                self.pending_find_previous = false;
-                self.queue_find_previous(true);
-            }
-            if self.pending_replace {
-                self.pending_replace = false;
-                let replaced = self.replace_current_selection();
-                if replaced {
-                    self.queue_find_next(true);
-                }
-            }
-            if self.pending_replace_all {
-                self.pending_replace_all = false;
-                self.replace_all_matches();
-            }
-            if self.pending_page_up {
-                self.pending_page_up = false;
-                let lines = self.visible_editor_lines.max(1);
-                self.jump_lines(-(lines as isize));
-            }
-            if self.pending_page_down {
-                self.pending_page_down = false;
-                let lines = self.visible_editor_lines.max(1);
-                self.jump_lines(lines as isize);
-            }
+        }
 
-            StripBuilder::new(ui)
-                .size(egui_extras::Size::relative(0.25).at_least(160.0))
-                .size(egui_extras::Size::relative(0.35))
-                .size(egui_extras::Size::relative(0.40))
-                .horizontal(|mut strip| {
-                    strip.cell(|ui| {
-                        ui.vertical(|ui| {
-                            self.show_file_tree(ui);
-                        });
-                    });
-
-                    // MIDDLE: Editor inside ScrollArea
-                    strip.cell(|ui| {
-                        self.editor_line_height =
-                            ui.text_style_height(&TextStyle::Monospace).max(1.0);
-                        let mut editor_area = egui::ScrollArea::vertical().auto_shrink([false; 2]);
-                        let mut requested_offset = None;
-                        if let Some(offset) = self.pending_editor_scroll.take() {
-                            requested_offset = Some(offset);
-                            editor_area = editor_area.vertical_scroll_offset(offset);
-                        }
-                        let scroll = editor_area.show(ui, |ui| {
-                            let mut editor_output = TextEdit::multiline(&mut self.content)
-                                .desired_width(f32::INFINITY)
-                                .code_editor()
-                                .show(ui);
-
-                            if let Some((start, end)) = self.pending_selection.take() {
-                                let ccursor_range =
-                                    CCursorRange::two(CCursor::new(start), CCursor::new(end));
-                                editor_output
-                                    .state
-                                    .cursor
-                                    .set_char_range(Some(ccursor_range));
-                                ui.memory_mut(|mem| mem.request_focus(editor_output.response.id));
-                            }
-
-                            let cursor_range =
-                                editor_output.state.cursor.range(&editor_output.galley);
-                            editor_output
-                                .state
-                                .store(ui.ctx(), editor_output.response.id);
-
-                            let response = editor_output.response.clone();
-
-                            self.editor_has_focus = response.has_focus();
-
-                            if let Some(cursor_range) = cursor_range {
-                                let sorted = cursor_range.sorted_cursors();
-                                let char_count = self.content.chars().count();
-                                let total_chars = char_count.max(1);
-                                let cursor_index =
-                                    cursor_range.primary.ccursor.index.min(char_count);
-                                let fraction = cursor_index as f32 / total_chars as f32;
-                                self.cursor_fraction = fraction.clamp(0.0, 1.0);
-                                self.current_char_index = cursor_range.primary.ccursor.index;
-                                self.current_line = cursor_range.primary.rcursor.row;
-                                self.selection_start = sorted[0].ccursor.index.min(char_count);
-                                self.selection_end = sorted[1].ccursor.index.min(char_count);
-                            } else {
-                                self.selection_start = 0;
-                                self.selection_end = 0;
-                                self.current_char_index = 0;
-                            }
-
-                            if response.changed() {
-                                self.update_modified_state();
-                            }
-
-                            let line_height = editor_output
-                                .galley
-                                .rows
-                                .first()
-                                .map(|row| row.rect.height())
-                                .unwrap_or_else(|| ui.text_style_height(&TextStyle::Monospace));
-                            self.editor_line_height = line_height.max(1.0);
-                        });
-                        self.scroll_left = scroll.state.offset.y;
-                        if let Some(target) = requested_offset {
-                            let max_offset =
-                                (scroll.content_size.y - scroll.inner_rect.height()).max(0.0);
-                            let clamped = target.clamp(0.0, max_offset);
-                            if (scroll.state.offset.y - clamped).abs() > 1.0 {
-                                self.pending_editor_scroll = Some(clamped);
-                            }
-                        }
-                        let visible_height = scroll.inner_rect.height();
-                        if visible_height > 0.0 {
-                            let lines = (visible_height / self.editor_line_height.max(1.0)).max(1.0)
-                                as usize;
-                            self.visible_editor_lines = lines.max(1);
-                        }
-                    });
-
-                    // RIGHT: Preview
-                    strip.cell(|ui| {
-                        let mut preview_area = egui::ScrollArea::vertical().auto_shrink([false; 2]);
-
-                        if self.editor_has_focus {
-                            let max_scroll = self.preview_max_scroll.max(0.0);
-                            let target_offset =
-                                (self.cursor_fraction * max_scroll).clamp(0.0, max_scroll);
-                            preview_area = preview_area.vertical_scroll_offset(target_offset);
-                        }
-
-                        let scroll = preview_area.show(ui, |ui| {
-                            CommonMarkViewer::new("full_markdown").show(
-                                ui,
-                                &mut self.cache,
-                                &self.content,
-                            );
-                        });
-                        let visible_height = scroll.inner_rect.height();
-                        let content_height = scroll.content_size.y;
-                        let max_scroll = (content_height - visible_height).max(0.0);
-                        self.preview_max_scroll = max_scroll;
-                        self.scroll_right = scroll.state.offset.y;
-                    });
-                });
-        });
-
-        // ==== STATUS BAR ====
-        TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                let name = self
-                    .file_path
-                    .as_ref()
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_else(|| "Untitled".to_string());
-                ui.label(format!(
-                    "{}{}",
-                    if self.modified { "🟡 " } else { "🟢 " },
-                    name
-                ));
-                ui.separator();
-                ui.label(format!("✍️ {} chars", self.content.len()));
-                if let Some(status) = &self.find_status {
-                    ui.separator();
-                    ui.label(status);
+        // ==== PAGE ====
+        let palette = theme::current(ctx);
+        CentralPanel::default()
+            .frame(egui::Frame::none().fill(palette.page))
+            .show(ctx, |ui| {
+                if self.show_home && self.file_path.is_none() && !self.modified {
+                    self.show_home_screen(ui);
+                } else {
+                    self.show_editor(ui, ctx);
                 }
             });
-        });
+
+        if self.focus_mode {
+            self.show_focus_overlay(ctx);
+        }
 
         if self.show_tool_output {
             let mut open = true;
@@ -665,54 +530,15 @@ impl eframe::App for MarkdownApp {
                 .collapsible(false)
                 .show(ctx, |ui| {
                     egui::Grid::new("key_bindings_grid")
-                        .striped(true)
+                        .striped(false)
+                        .spacing([24.0, 6.0])
                         .num_columns(2)
                         .show(ui, |ui| {
-                            ui.label("Ctrl+H");
-                            ui.label("Toggle help");
-                            ui.end_row();
-                            ui.label("Ctrl+N");
-                            ui.label("New file");
-                            ui.end_row();
-                            ui.label("Ctrl+O");
-                            ui.label("Open file");
-                            ui.end_row();
-                            ui.label("Ctrl+Q");
-                            ui.label("Quit");
-                            ui.end_row();
-                            ui.label("Ctrl+S");
-                            ui.label("Save");
-                            ui.end_row();
-                            ui.label("Alt+S");
-                            ui.label("Save as");
-                            ui.end_row();
-                            ui.label("Alt+A");
-                            ui.label("Save all");
-                            ui.end_row();
-                            ui.label("Ctrl+Z / Ctrl+Y");
-                            ui.label("Undo / Redo");
-                            ui.end_row();
-                            ui.label("Ctrl+F");
-                            ui.label("Find");
-                            ui.end_row();
-                            ui.label("Ctrl+R");
-                            ui.label("Replace");
-                            ui.end_row();
-                            ui.label("Ctrl+D");
-                            ui.label("Delete line");
-                            ui.end_row();
-                            ui.label("Page Up");
-                            ui.label("Move up one page");
-                            ui.end_row();
-                            ui.label("Page Down");
-                            ui.label("Move down one page");
-                            ui.end_row();
-                            ui.label("Ctrl+Shift+L");
-                            ui.label("Lint Markdown");
-                            ui.end_row();
-                            ui.label("Ctrl+Shift+F");
-                            ui.label("Format Markdown");
-                            ui.end_row();
+                            for (keys, action) in workspace::SHORTCUTS {
+                                ui.label(egui::RichText::new(*keys).monospace());
+                                ui.label(*action);
+                                ui.end_row();
+                            }
                         });
                 });
         }
@@ -774,6 +600,9 @@ impl eframe::App for MarkdownApp {
             }
         }
 
+        self.show_new_project_dialog(ctx);
+        self.show_disk_conflict_dialog(ctx);
+
         // ==== EXIT CONFIRMATION ====
         if self.show_exit_confirm {
             egui::Window::new("Unsaved Changes")
@@ -785,7 +614,11 @@ impl eframe::App for MarkdownApp {
                     ui.horizontal(|ui| {
                         if ui.button("Save and Exit").clicked() {
                             self.save_file(false);
-                            std::process::exit(0);
+                            // Stay open if the save was cancelled or hit a conflict.
+                            if !self.modified {
+                                std::process::exit(0);
+                            }
+                            self.show_exit_confirm = false;
                         }
                         if ui.button("Discard and Exit").clicked() {
                             std::process::exit(0);
@@ -832,16 +665,96 @@ impl eframe::App for MarkdownApp {
                     });
                 });
         }
+
+        self.show_history_window(ctx);
+        self.after_frame(ctx);
+        self.run_autosave(ctx);
     }
 }
 
 impl MarkdownApp {
+    fn run_pending_actions(&mut self) {
+        if self.pending_exit {
+            self.pending_exit = false;
+            if self.save_before_leaving() {
+                std::process::exit(0);
+            } else if self.disk_conflict.is_none() {
+                self.show_exit_confirm = true;
+            }
+        }
+        if self.pending_new {
+            self.pending_new = false;
+            self.run_or_prompt_discard(DiscardAction::NewDocument);
+        }
+        if self.pending_open {
+            self.pending_open = false;
+            self.run_or_prompt_discard(DiscardAction::OpenDialog);
+        }
+        if self.pending_save {
+            self.pending_save = false;
+            self.save_file(false);
+        }
+        if self.pending_save_as {
+            self.pending_save_as = false;
+            self.save_file(true);
+        }
+        if self.pending_save_all {
+            self.pending_save_all = false;
+            self.save_file(false);
+        }
+        if self.pending_lint {
+            self.pending_lint = false;
+            self.run_lint_tool();
+        }
+        if self.pending_format {
+            self.pending_format = false;
+            self.run_format_tool();
+        }
+        if self.pending_delete_line {
+            self.pending_delete_line = false;
+            self.delete_current_line();
+        }
+        if self.pending_find_next {
+            self.pending_find_next = false;
+            self.queue_find_next(true);
+        }
+        if self.pending_find_previous {
+            self.pending_find_previous = false;
+            self.queue_find_previous(true);
+        }
+        if self.pending_replace {
+            self.pending_replace = false;
+            let replaced = self.replace_current_selection();
+            if replaced {
+                self.queue_find_next(true);
+            }
+        }
+        if self.pending_replace_all {
+            self.pending_replace_all = false;
+            self.replace_all_matches();
+        }
+        if self.pending_page_up {
+            self.pending_page_up = false;
+            let lines = self.visible_editor_lines.max(1);
+            self.jump_lines(-(lines as isize));
+        }
+        if self.pending_page_down {
+            self.pending_page_down = false;
+            let lines = self.visible_editor_lines.max(1);
+            self.jump_lines(lines as isize);
+        }
+    }
+
     fn load_config() -> (AppConfig, Option<PathBuf>) {
         let config_path = MarkdownApp::config_file_path();
         let mut config = AppConfig::default();
 
-        if let Some(path) = &config_path {
-            if path.exists() {
+        let read_path = config_path
+            .clone()
+            .filter(|path| path.exists())
+            .or_else(|| MarkdownApp::legacy_config_path().filter(|path| path.exists()));
+        if let Some(path) = &read_path {
+            {
                 match fs::read_to_string(path) {
                     Ok(contents) => match toml::from_str::<AppConfig>(&contents) {
                         Ok(parsed) => config = parsed,
@@ -879,6 +792,12 @@ impl MarkdownApp {
     }
 
     fn config_file_path() -> Option<PathBuf> {
+        ProjectDirs::from("com", "quillwright", "quillwright")
+            .map(|dirs| dirs.config_dir().join("config.toml"))
+    }
+
+    /// Config written by md-echo, the project Quillwright was forked from.
+    fn legacy_config_path() -> Option<PathBuf> {
         ProjectDirs::from("com", "fibnas", "md-echo")
             .map(|dirs| dirs.config_dir().join("config.toml"))
     }
@@ -912,9 +831,104 @@ impl MarkdownApp {
         if self.theme_applied {
             return;
         }
-        let visuals = self.config.theme.to_visuals();
-        ctx.set_visuals(visuals);
+        let t = &self.config.theme;
+        let color = |value: &Option<String>| value.as_deref().and_then(parse_color);
+        let overrides = theme::Overrides {
+            background: color(&t.background),
+            panel: color(&t.panel),
+            text: color(&t.text),
+            accent: color(&t.accent),
+        };
+        let palette = theme::resolve(theme::Preset::from_name(&t.base), &overrides);
+        theme::apply(ctx, &palette, color(&t.hyperlink));
         self.theme_applied = true;
+    }
+
+    fn pick_project(&mut self) {
+        if let Some(path) = FileDialog::new()
+            .set_title("Open Project")
+            .set_directory(&self.working_dir)
+            .pick_folder()
+        {
+            self.run_or_prompt_discard(DiscardAction::OpenProject(path));
+        }
+    }
+
+    fn activate_project(&mut self, root: PathBuf) {
+        self.remember_project(&root);
+        self.set_working_directory(root);
+        self.index_dirty = true;
+        self.show_home = true;
+        self.external_load = true;
+        self.content.clear();
+        self.original_content.clear();
+        self.file_path = None;
+        self.modified = false;
+        self.reset_view_state();
+    }
+
+    fn show_new_project_dialog(&mut self, ctx: &Context) {
+        let Some(dialog) = &mut self.new_project else {
+            return;
+        };
+        let mut open = true;
+        let mut destination = None;
+        let mut cancelled = false;
+        egui::Window::new("New Project")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.label("Project folder name");
+                ui.text_edit_singleline(&mut dialog.name);
+                ui.label("Create inside");
+                ui.monospace(dialog.parent.display().to_string());
+                if ui.button("Choose Folder...").clicked() {
+                    if let Some(parent) = FileDialog::new()
+                        .set_title("Choose Parent Folder")
+                        .set_directory(&dialog.parent)
+                        .pick_folder()
+                    {
+                        dialog.parent = parent;
+                        dialog.error = None;
+                    }
+                }
+                ui.label("Creates chapters/, characters/, world-rules.md and AGENT.md.");
+                ui.label("Templates are optional. Existing folders will not be overwritten.");
+                if let Some(error) = &dialog.error {
+                    ui.colored_label(ui.visuals().error_fg_color, error);
+                }
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(
+                            self.pending_discard_action.is_none(),
+                            egui::Button::new("Create"),
+                        )
+                        .clicked()
+                    {
+                        match project::destination(&dialog.parent, &dialog.name) {
+                            Ok(path) => {
+                                destination = Some(path);
+                                dialog.error = None;
+                            }
+                            Err(err) => dialog.error = Some(err.to_string()),
+                        }
+                    }
+                    cancelled = ui.button("Cancel").clicked();
+                });
+            });
+        if !open || cancelled {
+            self.new_project = None;
+            if matches!(
+                self.pending_discard_action,
+                Some(DiscardAction::CreateProject(_))
+            ) {
+                self.pending_discard_action = None;
+            }
+        }
+        if let Some(path) = destination {
+            self.run_or_prompt_discard(DiscardAction::CreateProject(path));
+        }
     }
 
     fn set_working_directory(&mut self, new_dir: PathBuf) {
@@ -925,35 +939,6 @@ impl MarkdownApp {
         } else {
             eprintln!("Invalid working directory: {}", new_dir.display());
         }
-    }
-
-    fn show_file_tree(&mut self, ui: &mut egui::Ui) {
-        ui.label("Working Directory");
-        ui.monospace(self.working_dir.display().to_string());
-
-        if ui.button("Change...").clicked() {
-            let mut dialog = FileDialog::new();
-            if self.working_dir.is_dir() {
-                dialog = dialog.set_directory(&self.working_dir);
-            }
-            if let Some(path) = dialog.pick_folder() {
-                self.set_working_directory(path);
-            }
-        }
-
-        ui.separator();
-
-        if !self.working_dir.is_dir() {
-            ui.label("Working directory is unavailable.");
-            return;
-        }
-
-        let root_dir = self.working_dir.clone();
-        egui::ScrollArea::vertical()
-            .auto_shrink([false; 2])
-            .show(ui, |ui| {
-                self.render_directory(ui, &root_dir, true);
-            });
     }
 
     fn render_directory(&mut self, ui: &mut egui::Ui, path: &Path, is_root: bool) {
@@ -969,7 +954,11 @@ impl MarkdownApp {
             .id_source(path.display().to_string())
             .default_open(is_root);
 
-        header.show(ui, |ui| match fs::read_dir(path) {
+        header.show(ui, |ui| self.render_entries(ui, path));
+    }
+
+    fn render_entries(&mut self, ui: &mut egui::Ui, path: &Path) {
+        match fs::read_dir(path) {
             Ok(entries) => {
                 let mut directories = Vec::new();
                 let mut files = Vec::new();
@@ -1014,7 +1003,7 @@ impl MarkdownApp {
             Err(err) => {
                 ui.label(format!("Cannot read {}: {}", path.display(), err));
             }
-        });
+        }
     }
 
     fn run_lint_tool(&mut self) {
@@ -1139,7 +1128,7 @@ impl MarkdownApp {
                 Ok(new_content) => {
                     if new_content != self.content {
                         self.content = new_content;
-                        self.modified = self.content != self.original_content;
+                        self.update_modified_state();
                     }
                 }
                 Err(err) => {
@@ -1173,11 +1162,11 @@ impl MarkdownApp {
     }
 
     fn reset_view_state(&mut self) {
+        self.editor = editor::Editor::default();
+        self.base_missing = false;
+        self.disk_conflict = None;
+        self.sync_notice = None;
         self.current_line = 0;
-        self.cursor_fraction = 0.0;
-        self.scroll_left = 0.0;
-        self.scroll_right = 0.0;
-        self.preview_max_scroll = 0.0;
         self.editor_has_focus = false;
         self.current_char_index = 0;
         self.selection_start = 0;
@@ -1190,7 +1179,7 @@ impl MarkdownApp {
     }
 
     fn update_modified_state(&mut self) {
-        self.modified = self.content != self.original_content;
+        self.modified = self.base_missing || self.content != self.original_content;
     }
 
     fn char_to_byte_index(text: &str, char_index: usize) -> usize {
@@ -1490,9 +1479,6 @@ impl MarkdownApp {
             self.selection_start = target_char;
             self.selection_end = target_char;
             self.current_line = target_line;
-            let total_chars = self.content.chars().count().max(1);
-            self.cursor_fraction =
-                (self.current_char_index as f32 / total_chars as f32).clamp(0.0, 1.0);
             let offset = (self.current_line as f32) * self.editor_line_height.max(1.0);
             self.pending_editor_scroll = Some(offset.max(0.0));
         }
@@ -1511,39 +1497,223 @@ impl MarkdownApp {
                 self.file_path = Some(Self::canonicalize_path(path));
                 self.modified = false;
                 self.reset_view_state();
+                self.show_home = false;
+                self.external_load = true;
             }
             Err(err) => {
-                eprintln!("Error reading file '{}': {}", path.display(), err);
+                self.show_tool_message(format!("Could not open {}: {err}", path.display()));
             }
         }
     }
 
     fn save_file(&mut self, save_as: bool) {
         if save_as || self.file_path.is_none() {
-            if let Some(path) = FileDialog::new().save_file() {
-                if let Err(err) = fs::write(&path, &self.content) {
-                    eprintln!("Save error: {}", err);
-                } else {
-                    self.file_path = Some(Self::canonicalize_path(&path));
-                    self.original_content = self.content.clone();
-                    self.modified = false;
+            if let Some(path) = FileDialog::new()
+                .set_directory(
+                    self.file_path
+                        .as_deref()
+                        .and_then(Path::parent)
+                        .unwrap_or(&self.working_dir),
+                )
+                .save_file()
+            {
+                // The dialog already confirmed overwriting an existing file.
+                match file_sync::write_checked(&path, &self.content, None) {
+                    Ok(()) => {
+                        self.file_path = Some(Self::canonicalize_path(&path));
+                        self.mark_saved();
+                    }
+                    Err(disk) => self.show_tool_message(format!("Save error: {disk:?}")),
                 }
             }
-        } else if let Some(path) = &self.file_path {
-            if let Err(err) = fs::write(path, &self.content) {
-                eprintln!("Save error: {}", err);
-            } else {
-                self.original_content = self.content.clone();
-                self.modified = false;
+        } else if let Err(err) = self.save_in_place() {
+            self.show_tool_message(format!("Save error: {err}"));
+        }
+    }
+
+    fn mark_saved(&mut self) {
+        self.index_dirty = true;
+        self.original_content = self.content.clone();
+        self.base_missing = false;
+        self.disk_conflict = None;
+        self.modified = false;
+    }
+
+    /// What we believe is on disk for the open file.
+    fn expected_disk(&self) -> file_sync::Disk {
+        if self.base_missing {
+            file_sync::Disk::Missing
+        } else {
+            file_sync::Disk::Text(self.original_content.clone())
+        }
+    }
+
+    /// Point the watcher at the current project/file and apply its reports.
+    fn sync_with_disk(&mut self, ctx: &Context) {
+        let monitor = self
+            .monitor
+            .get_or_insert_with(|| file_sync::Monitor::new(ctx.clone()));
+        let focused = ctx.input(|i| i.focused);
+        if focused && !self.window_focused {
+            // Returning to the window is a good moment to double-check the disk.
+            monitor.check();
+        }
+        if !focused && self.window_focused {
+            self.saving.focus_lost = true;
+        }
+        self.window_focused = focused;
+
+        let current = self.monitor_target.as_ref();
+        if current.map(|t| (&t.root, &t.file)) != Some((&self.working_dir, &self.file_path)) {
+            let target = file_sync::Target {
+                generation: current.map_or(0, |t| t.generation + 1),
+                root: self.working_dir.clone(),
+                file: self.file_path.clone(),
+            };
+            monitor.configure(target.clone());
+            self.monitor_target = Some(target);
+        }
+
+        let updates: Vec<_> = monitor.updates.try_iter().collect();
+        for update in updates {
+            if Some(&update.target) != self.monitor_target.as_ref() {
+                continue; // Stale report for a previous file or project.
+            }
+            // Something in the project changed: refresh chapter titles and counts.
+            self.index_dirty = true;
+            if let Some(warning) = &update.warning {
+                self.sync_notice = Some(format!("⚠ File watching degraded: {warning}"));
+            }
+            // Follow renames of the project folder or the open file.
+            if update.root != self.working_dir && update.root.is_dir() {
+                self.working_dir = update.root.clone();
+                self.config.working_dir = Some(update.root.clone());
+                self.save_config();
+            }
+            if update.file != self.file_path {
+                self.file_path = update.file.clone();
+            }
+            if let Some(disk) = update.disk {
+                self.apply_disk(disk);
             }
         }
     }
 
+    fn apply_disk(&mut self, disk: file_sync::Disk) {
+        use file_sync::{Decision, Disk};
+        if disk == self.expected_disk() {
+            // Disk is back to what we expect (e.g. an agent reverted its change).
+            if !self.base_missing {
+                self.disk_conflict = None;
+            }
+            return;
+        }
+        let decision = file_sync::reconcile(
+            &self.original_content,
+            &self.content,
+            &disk,
+            self.editor.is_composing(),
+        );
+        match (decision, disk) {
+            (Decision::Unchanged, _) => {}
+            (Decision::Accept, Disk::Text(text)) => {
+                // The disk now matches the editor (e.g. our own save, or identical text).
+                self.original_content = text;
+                self.base_missing = false;
+                self.disk_conflict = None;
+                self.update_modified_state();
+            }
+            (Decision::Reload, Disk::Text(text)) => {
+                self.reload_from_disk(text);
+                self.sync_notice = Some("↻ Reloaded external changes".to_string());
+            }
+            (_, disk) => self.disk_conflict = Some(disk),
+        }
+    }
+
+    /// Replace the buffer with disk contents, keeping the cursor near the same text.
+    fn reload_from_disk(&mut self, text: String) {
+        // Keep the text being replaced: the last saved version and any unsaved edits.
+        let (saved, edited) = (self.original_content.clone(), self.content.clone());
+        self.record_history(&saved, true);
+        self.record_history(&edited, true);
+        let selection = self.editor.selection;
+        let map = |index| file_sync::map_cursor(&self.content, &text, index);
+        self.editor.selection = egui::text::CCursorRange::two(
+            egui::text::CCursor::new(map(selection.secondary.index)),
+            egui::text::CCursor::new(map(selection.primary.index)),
+        );
+        self.content = text.clone();
+        self.original_content = text;
+        self.base_missing = false;
+        self.disk_conflict = None;
+        self.modified = false;
+        self.external_load = true;
+    }
+
+    fn show_disk_conflict_dialog(&mut self, ctx: &Context) {
+        let Some(disk) = self.disk_conflict.clone() else {
+            return;
+        };
+        let name = self
+            .file_path
+            .as_deref()
+            .and_then(Path::file_name)
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "This file".to_string());
+        egui::Window::new("File Changed on Disk")
+            .anchor(Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                match &disk {
+                    file_sync::Disk::Text(_) => ui.label(format!(
+                        "{name} was changed outside Quillwright (for example, by an agent) \
+                         while you had unsaved edits."
+                    )),
+                    file_sync::Disk::Missing => {
+                        ui.label(format!("{name} was deleted or moved outside Quillwright."))
+                    }
+                    file_sync::Disk::Unreadable(err) => {
+                        ui.label(format!("{name} can no longer be read: {err}"))
+                    }
+                };
+                ui.horizontal(|ui| {
+                    if let file_sync::Disk::Text(text) = &disk {
+                        if ui
+                            .button("Reload from Disk")
+                            .on_hover_text("Discard your unsaved edits")
+                            .clicked()
+                        {
+                            self.reload_from_disk(text.clone());
+                        }
+                    }
+                    if ui
+                        .button("Keep My Version")
+                        .on_hover_text("Keep editing; saving will overwrite the disk version")
+                        .clicked()
+                    {
+                        match &disk {
+                            file_sync::Disk::Text(text) => {
+                                self.original_content = text.clone();
+                                self.base_missing = false;
+                            }
+                            file_sync::Disk::Missing => self.base_missing = true,
+                            file_sync::Disk::Unreadable(_) => {}
+                        }
+                        self.disk_conflict = None;
+                        self.update_modified_state();
+                    }
+                });
+            });
+    }
+
     fn run_or_prompt_discard(&mut self, action: DiscardAction) {
-        if self.modified {
-            self.pending_discard_action = Some(action);
-        } else {
+        if self.save_before_leaving() {
             self.perform_discard_action(action);
+        } else if self.disk_conflict.is_none() {
+            // A conflict opens its own dialog; otherwise ask what to do with the edits.
+            self.pending_discard_action = Some(action);
         }
     }
 
@@ -1555,15 +1725,49 @@ impl MarkdownApp {
                 self.file_path = None;
                 self.modified = false;
                 self.reset_view_state();
+                self.show_home = false;
+                self.external_load = true;
+            }
+            DiscardAction::Home => {
+                self.content.clear();
+                self.original_content.clear();
+                self.file_path = None;
+                self.modified = false;
+                self.reset_view_state();
+                self.show_home = true;
+                self.external_load = true;
             }
             DiscardAction::OpenDialog => {
-                if let Some(path) = FileDialog::new().pick_file() {
+                if let Some(path) = FileDialog::new()
+                    .set_directory(&self.working_dir)
+                    .pick_file()
+                {
                     self.open_file_from_path(&path);
                 }
             }
             DiscardAction::OpenPath(path) => {
                 self.open_file_from_path(&path);
             }
+            DiscardAction::CreateProject(path) => match project::create(&path) {
+                Ok(root) => {
+                    self.activate_project(root.clone());
+                    self.open_file_from_path(&root.join(project::FIRST_CHAPTER));
+                    self.new_project = None;
+                }
+                Err(err) => {
+                    let message = format!("Could not create project {}: {err}", path.display());
+                    if let Some(dialog) = &mut self.new_project {
+                        dialog.error = Some(message);
+                    } else {
+                        self.show_tool_message(message);
+                    }
+                }
+            },
+            DiscardAction::OpenProject(path) => match project::open(&path) {
+                Ok(root) => self.activate_project(root),
+                Err(err) => self
+                    .show_tool_message(format!("Could not open project {}: {err}", path.display())),
+            },
         }
     }
 }

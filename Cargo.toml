@@ -1,12 +1,12 @@
 [package]
-name = "md-echo"
+name = "quillwright"
 version = "0.1.1"
 edition = "2021"
-description = "Minimalist dual-pane Markdown editor & real time preview built with egui and eframe"
+description = "A distraction-free writing environment for novels and long-form fiction, built on plain Markdown and designed to work alongside AI agents"
 license = "MIT"
 repository = "https://github.com/fibnas/md-echo"
-categories = ["command-line-utilities"]
-keywords = ["editor", "tui", "organization", "productivity", "markdown"]
+categories = ["text-editors"]
+keywords = ["writing", "fiction", "novel", "markdown", "editor"]
 readme = "README.md"
 exclude = ["target/", "entries.json", "screenshots/"]
 
@@ -14,17 +14,19 @@ exclude = ["target/", "entries.json", "screenshots/"]
 eframe          = "0.27"
 egui            = "0.27"
 egui_extras     = { version = "0.27", features = ["image"] }
-egui_commonmark = "0.15"
+pulldown-cmark  = { version = "0.10", default-features = false }
 rfd             = "0.11"
 syntect         = "5"
 directories     = "5.0"
 serde           = { version = "1.0", features = ["derive"] }
 toml            = "0.8"
 tempfile        = "3"
+fontdb = "0.23"
+ab_glyph = "0.2"
+notify = "8"
+similar = "2"
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 
 [[bin]]
-name = "md-echo"
+name = "quillwright"
 path = "src/main.rs"
-
-[patch.crates-io]
-egui_commonmark = { path = "crates/egui_commonmark" }
