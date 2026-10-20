@@ -3,6 +3,8 @@
 Thanks for your interest! Quillwright is a small project, and every kind of help is welcome:
 bug reports, ideas from writers, documentation, and code.
 
+Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Questions and ideas
 
 - **Questions, ideas, and show-and-tell:** use
