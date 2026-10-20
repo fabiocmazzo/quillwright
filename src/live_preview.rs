@@ -153,7 +153,7 @@ pub fn project(ui: &Ui, source: &str, width: f32, selection: Option<(usize, usiz
     let text_color = ui.visuals().text_color();
     let dim = ui
         .ctx()
-        .data(|d| d.get_temp::<bool>(egui::Id::new("editor_dim")))
+        .data(|d| d.get_temp::<bool>(egui::Id::unique("editor_dim")))
         .unwrap_or(false);
     let focus = selection
         .filter(|_| dim)
@@ -227,15 +227,15 @@ pub fn project(ui: &Ui, source: &str, width: f32, selection: Option<(usize, usiz
         if centered {
             job.sections.push(egui::text::LayoutSection {
                 leading_space: (width / 2.0 - metrics.size * 0.75).max(0.0),
-                byte_range: start..job.text.len(),
+                byte_range: start.into()..job.text.len().into(),
                 format,
             });
         } else if let Some(last) = job.sections.last_mut().filter(|last| last.format == format) {
-            last.byte_range.end = job.text.len();
+            last.byte_range.end = job.text.len().into();
         } else {
             job.sections.push(egui::text::LayoutSection {
                 leading_space: 0.0,
-                byte_range: start..job.text.len(),
+                byte_range: start.into()..job.text.len().into(),
                 format,
             });
         }
@@ -267,17 +267,17 @@ mod tests {
     fn dimming_fades_only_other_paragraphs() {
         let ctx = egui::Context::default();
         crate::fonts::install_test_fonts(&ctx);
-        ctx.data_mut(|d| d.insert_temp(egui::Id::new("editor_dim"), true));
+        ctx.data_mut(|d| d.insert_temp(egui::Id::unique("editor_dim"), true));
         let source = "First paragraph.\n\nSecond one.";
-        let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
+        ctx.run_ui(Default::default(), |ui| {
+            egui::CentralPanel::default().show(ui, |ui| {
                 let cursor = source.find("Second").unwrap() + 2;
                 let job = project(ui, source, 300.0, Some((cursor, cursor))).job;
                 let color_at = |text: &str| {
                     let at = job.text.find(text).unwrap();
                     job.sections
                         .iter()
-                        .find(|s| s.byte_range.contains(&at))
+                        .find(|s| s.byte_range.contains(&at.into()))
                         .unwrap()
                         .format
                         .color
@@ -289,7 +289,8 @@ mod tests {
                 let job = project(ui, source, 300.0, None).job;
                 assert!(job.sections.iter().all(|s| s.format.color == active));
             });
-        });
+        })
+        .drop_without_applying_deltas();
     }
 
     #[test]
@@ -344,8 +345,8 @@ mod tests {
         let ctx = egui::Context::default();
         crate::fonts::install_test_fonts(&ctx);
         let source = "# Chapter One\n\nThe **café** was *moving*. [link](url)";
-        let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
+        ctx.run_ui(Default::default(), |ui| {
+            egui::CentralPanel::default().show(ui, |ui| {
                 let inactive = project(ui, source, 300.0, None);
                 assert_eq!(
                     inactive.job.text,
@@ -365,6 +366,7 @@ mod tests {
                 assert_eq!(all.job.text, source);
                 assert_eq!(project(ui, "", 300.0, None).to_source(0), 0);
             });
-        });
+        })
+        .drop_without_applying_deltas();
     }
 }

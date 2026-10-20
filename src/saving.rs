@@ -181,7 +181,7 @@ impl MarkdownApp {
                     ui.vertical(|ui| {
                         ui.set_width(170.0);
                         egui::ScrollArea::vertical()
-                            .id_source("history_list")
+                            .id_salt("history_list")
                             .show(ui, |ui| {
                                 for (i, snapshot) in view.snapshots.iter().enumerate() {
                                     let mut label = history::time_label(snapshot.time, now);
@@ -190,7 +190,7 @@ impl MarkdownApp {
                                     }
                                     let response = ui.add_sized(
                                         [ui.available_width(), 0.0],
-                                        egui::SelectableLabel::new(i == view.selected, label),
+                                        egui::Button::selectable(i == view.selected, label),
                                     );
                                     if response.clicked() && i != view.selected {
                                         view.selected = i;
@@ -215,7 +215,7 @@ impl MarkdownApp {
                         }
                         ui.separator();
                         egui::ScrollArea::vertical()
-                            .id_source("history_diff")
+                            .id_salt("history_diff")
                             .auto_shrink([false, false])
                             .max_height((ui.available_height() - 44.0).max(80.0))
                             .show(ui, |ui| {
@@ -254,8 +254,8 @@ impl MarkdownApp {
         let selection = self.editor.selection;
         let map = |index| file_sync::map_cursor(&current, &text, index);
         self.editor.selection = egui::text::CCursorRange::two(
-            egui::text::CCursor::new(map(selection.secondary.index)),
-            egui::text::CCursor::new(map(selection.primary.index)),
+            egui::text::CCursor::new(map(selection.secondary.index.0)),
+            egui::text::CCursor::new(map(selection.primary.index.0)),
         );
         self.content = text;
         // Restored text is not counted as words typed this session.

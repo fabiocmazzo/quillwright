@@ -4,8 +4,8 @@ use crate::{fonts, manuscript, project, theme, DiscardAction, MarkdownApp};
 use eframe::egui;
 use egui::{
     text::{LayoutJob, TextWrapping},
-    Align, Align2, Button, Color32, Context, CursorIcon, FontId, Layout, RichText, TextStyle,
-    TopBottomPanel, Ui, ViewportCommand,
+    Align, Align2, Button, Color32, Context, CursorIcon, FontId, Layout, RichText, TextStyle, Ui,
+    ViewportCommand,
 };
 use std::path::{Path, PathBuf};
 
@@ -49,33 +49,33 @@ enum NavAction {
 impl MarkdownApp {
     // ----- Menus -----------------------------------------------------------
 
-    pub(crate) fn show_menu_bar(&mut self, ctx: &Context) {
-        let palette = theme::current(ctx);
-        TopBottomPanel::top("menu_bar")
+    pub(crate) fn show_menu_bar(&mut self, root: &mut Ui) {
+        let palette = theme::current(root.ctx());
+        egui::Panel::top("menu_bar")
             .frame(
-                egui::Frame::none()
+                egui::Frame::NONE
                     .fill(palette.desk)
-                    .inner_margin(egui::Margin::symmetric(8.0, 4.0)),
+                    .inner_margin(egui::Margin::symmetric(8, 4)),
             )
-            .show(ctx, |ui| {
-                egui::menu::bar(ui, |ui| {
+            .show(root, |ui| {
+                egui::MenuBar::new().ui(ui, |ui| {
                     ui.menu_button("File", |ui| self.file_menu(ui));
                     ui.menu_button("View", |ui| self.view_menu(ui));
                     ui.menu_button("Assistant", |ui| self.assistant_menu(ui));
                     ui.menu_button("Tools", |ui| {
                         if ui.button("Lint Markdown\tCtrl+Shift+L").clicked() {
                             self.pending_lint = true;
-                            ui.close_menu();
+                            ui.close();
                         }
                         if ui.button("Format Markdown\tCtrl+Shift+F").clicked() {
                             self.pending_format = true;
-                            ui.close_menu();
+                            ui.close();
                         }
                     });
                     ui.menu_button("Help", |ui| {
                         if ui.button("Keyboard Shortcuts\tCtrl+H").clicked() {
                             self.show_help_overlay = true;
-                            ui.close_menu();
+                            ui.close();
                         }
                     });
                 });
@@ -85,42 +85,42 @@ impl MarkdownApp {
     fn file_menu(&mut self, ui: &mut Ui) {
         if ui.button("New Chapter\tCtrl+Shift+N").clicked() {
             self.create_chapter();
-            ui.close_menu();
+            ui.close();
         }
         if ui.button("New Character").clicked() {
             self.create_character();
-            ui.close_menu();
+            ui.close();
         }
         ui.separator();
         if ui.button("New Project...").clicked() {
             self.open_new_project_dialog();
-            ui.close_menu();
+            ui.close();
         }
         if ui.button("Open Project...").clicked() {
             self.pick_project();
-            ui.close_menu();
+            ui.close();
         }
         if ui.button("Project Home").clicked() {
             self.go_home();
-            ui.close_menu();
+            ui.close();
         }
         ui.separator();
         if ui.button("New Blank Document\tCtrl+N").clicked() {
             self.run_or_prompt_discard(DiscardAction::NewDocument);
-            ui.close_menu();
+            ui.close();
         }
         if ui.button("Open File...\tCtrl+O").clicked() {
             self.run_or_prompt_discard(DiscardAction::OpenDialog);
-            ui.close_menu();
+            ui.close();
         }
         ui.separator();
         if ui.button("Save\tCtrl+S").clicked() {
             self.save_file(false);
-            ui.close_menu();
+            ui.close();
         }
         if ui.button("Save As...\tCtrl+Shift+S").clicked() {
             self.save_file(true);
-            ui.close_menu();
+            ui.close();
         }
         let mut autosave = self.config.editor.autosave;
         if ui
@@ -138,23 +138,23 @@ impl MarkdownApp {
             .clicked()
         {
             self.open_history();
-            ui.close_menu();
+            ui.close();
         }
         if ui.button("Export Manuscript...\tCtrl+Shift+E").clicked() {
             self.open_export();
-            ui.close_menu();
+            ui.close();
         }
         ui.separator();
         if ui.button("Exit\tCtrl+Q").clicked() {
             self.pending_exit = true;
-            ui.close_menu();
+            ui.close();
         }
     }
 
     fn assistant_menu(&mut self, ui: &mut Ui) {
         if ui.button("Assistant Panel\tCtrl+K").clicked() {
             self.toggle_assistant();
-            ui.close_menu();
+            ui.close();
         }
         ui.separator();
         let has_selection = self.selection_start != self.selection_end;
@@ -172,13 +172,13 @@ impl MarkdownApp {
             {
                 let ctx = ui.ctx().clone();
                 self.send_assistant(&ctx, action);
-                ui.close_menu();
+                ui.close();
             }
         }
         ui.separator();
         if ui.button("Assistant Settings...").clicked() {
             self.open_assistant_settings();
-            ui.close_menu();
+            ui.close();
         }
     }
 
@@ -188,13 +188,13 @@ impl MarkdownApp {
         for preset in theme::Preset::ALL {
             if ui.radio(current == preset, preset.label()).clicked() {
                 self.set_theme(preset);
-                ui.close_menu();
+                ui.close();
             }
         }
         ui.separator();
         if ui.button("Focus Mode\tF11").clicked() {
             self.pending_focus_toggle = true;
-            ui.close_menu();
+            ui.close();
         }
         let mut sidebar = self.config.view.sidebar;
         if ui.checkbox(&mut sidebar, "Sidebar\tCtrl+B").changed() {
@@ -235,17 +235,13 @@ impl MarkdownApp {
             let delta =
                 crate::editor::EditorConfig::default().font_size - fonts::typography(ui.ctx()).size;
             self.change_text_size(ui.ctx(), delta);
-            ui.close_menu();
+            ui.close();
         }
         ui.separator();
         ui.label(RichText::new("Session goal (words)").small().weak());
         let mut goal = self.config.view.session_goal;
         if ui
-            .add(
-                egui::DragValue::new(&mut goal)
-                    .speed(50)
-                    .clamp_range(0..=100_000),
-            )
+            .add(egui::DragValue::new(&mut goal).speed(50).range(0..=100_000))
             .on_hover_text("0 hides the goal")
             .changed()
         {
@@ -317,7 +313,8 @@ impl MarkdownApp {
 
     // ----- Sidebar ---------------------------------------------------------
 
-    pub(crate) fn show_sidebar(&mut self, ctx: &Context) {
+    pub(crate) fn show_sidebar(&mut self, root: &mut Ui) {
+        let ctx = &root.ctx().clone();
         let p = theme::current(ctx);
         let index = self.index.clone();
         let current = self.file_path.clone();
@@ -331,16 +328,16 @@ impl MarkdownApp {
         let cursor = self.current_char_index;
         let mut action = None;
 
-        egui::SidePanel::left("navigator")
+        egui::Panel::left("navigator")
             .resizable(true)
-            .default_width(270.0)
-            .width_range(200.0..=460.0)
+            .default_size(270.0)
+            .size_range(200.0..=460.0)
             .frame(
-                egui::Frame::none()
+                egui::Frame::NONE
                     .fill(p.desk)
-                    .inner_margin(egui::Margin::symmetric(10.0, 12.0)),
+                    .inner_margin(egui::Margin::symmetric(10, 12)),
             )
-            .show(ctx, |ui| {
+            .show(root, |ui| {
                 let name = folder_name(&self.working_dir);
                 ui.horizontal(|ui| {
                     ui.label(
@@ -456,7 +453,7 @@ impl MarkdownApp {
                                 .color(p.muted)
                                 .strong(),
                         )
-                        .id_source("all_files")
+                        .id_salt("all_files")
                         .default_open(!structured)
                         .show(ui, |ui| {
                             if self.working_dir.is_dir() {
@@ -496,7 +493,8 @@ impl MarkdownApp {
 
     // ----- Status bar ------------------------------------------------------
 
-    pub(crate) fn show_status_bar(&mut self, ctx: &Context) {
+    pub(crate) fn show_status_bar(&mut self, root: &mut Ui) {
+        let ctx = &root.ctx().clone();
         let p = theme::current(ctx);
         let open_words = self
             .file_path
@@ -513,13 +511,13 @@ impl MarkdownApp {
             .map(|text| manuscript::word_count(&text))
             .filter(|&n| n > 0);
 
-        TopBottomPanel::bottom("status_bar")
+        egui::Panel::bottom("status_bar")
             .frame(
-                egui::Frame::none()
+                egui::Frame::NONE
                     .fill(p.desk)
-                    .inner_margin(egui::Margin::symmetric(12.0, 5.0)),
+                    .inner_margin(egui::Margin::symmetric(12, 5)),
             )
-            .show(ctx, |ui| {
+            .show(root, |ui| {
                 ui.horizontal(|ui| {
                     let small = |text: String| RichText::new(text).size(12.5).color(p.muted);
                     if self.modified && self.can_save_silently() {
@@ -558,7 +556,7 @@ impl MarkdownApp {
                                 egui::ProgressBar::new(done.min(1.0))
                                     .desired_width(90.0)
                                     .desired_height(6.0)
-                                    .rounding(3.0)
+                                    .corner_radius(3)
                                     .fill(p.accent),
                             )
                             .on_hover_text(format!(
@@ -609,7 +607,7 @@ impl MarkdownApp {
     pub(crate) fn show_home_screen(&mut self, ui: &mut Ui) {
         let p = theme::current(ui.ctx());
         let index = self.index.clone();
-        let screen_height = ui.ctx().screen_rect().height();
+        let screen_height = ui.ctx().content_rect().height();
         let mut action = None;
         egui::ScrollArea::vertical()
             .auto_shrink([false; 2])
@@ -749,7 +747,7 @@ impl MarkdownApp {
             .rect_filled(ui.max_rect(), 0.0, ui.visuals().extreme_bg_color);
         self.editor_line_height = ui.text_style_height(&TextStyle::Monospace).max(1.0);
         let mut editor_area = egui::ScrollArea::vertical()
-            .id_source("page")
+            .id_salt("page")
             .auto_shrink([false; 2]);
         let mut requested_offset = None;
         if let Some(offset) = self.pending_editor_scroll.take() {
@@ -766,16 +764,16 @@ impl MarkdownApp {
             );
             self.editor_has_focus = response.has_focus();
             let range = self.editor.selection;
-            let sorted = range.sorted();
-            self.current_char_index = range.primary.index;
+            let sorted = range.sorted_cursors();
+            self.current_char_index = range.primary.index.0;
             self.current_line = self
                 .content
                 .chars()
                 .take(self.current_char_index)
                 .filter(|&ch| ch == '\n')
                 .count();
-            self.selection_start = sorted[0].index;
-            self.selection_end = sorted[1].index;
+            self.selection_start = sorted[0].index.0;
+            self.selection_end = sorted[1].index.0;
             if response.changed() {
                 self.update_modified_state();
             }
@@ -785,7 +783,7 @@ impl MarkdownApp {
         if let Some(target) = requested_offset {
             let max_offset = (scroll.content_size.y - scroll.inner_rect.height()).max(0.0);
             let clamped = target.clamp(0.0, max_offset);
-            if (scroll.state.offset.y - clamped).abs() > 1.0 {
+            if (scroll.state.clamped_offset().y - clamped).abs() > 1.0 {
                 self.pending_editor_scroll = Some(clamped);
             }
         }
@@ -801,7 +799,7 @@ impl MarkdownApp {
     pub(crate) fn show_focus_overlay(&mut self, ctx: &Context) {
         let p = theme::current(ctx);
         let faint = p.muted.gamma_multiply(0.75);
-        egui::Area::new(egui::Id::new("focus_stats"))
+        egui::Area::new(egui::Id::unique("focus_stats"))
             .anchor(Align2::RIGHT_BOTTOM, egui::vec2(-20.0, -14.0))
             .interactable(false)
             .show(ctx, |ui| {
@@ -823,7 +821,7 @@ impl MarkdownApp {
         let elapsed = ctx.input(|i| i.time) - self.focus_since;
         if elapsed < 4.0 {
             let alpha = (1.0 - (elapsed as f32 - 2.5).max(0.0) / 1.5).clamp(0.0, 1.0);
-            egui::Area::new(egui::Id::new("focus_hint"))
+            egui::Area::new(egui::Id::unique("focus_hint"))
                 .anchor(Align2::CENTER_TOP, egui::vec2(0.0, 16.0))
                 .interactable(false)
                 .show(ctx, |ui| {
@@ -927,11 +925,11 @@ fn hint(ui: &mut Ui, text: &str, p: &theme::Palette) {
 }
 
 fn card(ui: &mut Ui, p: &theme::Palette, add: impl FnOnce(&mut Ui)) {
-    egui::Frame::none()
+    egui::Frame::NONE
         .fill(theme::mix(p.page, p.desk, 0.6))
         .stroke(egui::Stroke::new(1.0_f32, theme::mix(p.desk, p.text, 0.1)))
-        .rounding(12.0)
-        .inner_margin(egui::Margin::same(20.0))
+        .corner_radius(12)
+        .inner_margin(egui::Margin::same(20))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             add(ui);
@@ -979,7 +977,7 @@ fn nav_row(
                 break_anywhere: true,
                 overflow_character: Some('…'),
             };
-            let galley = ui.fonts(|f| f.layout_job(job));
+            let galley = ui.painter().layout_job(job);
             right -= galley.size().x;
             let pos = egui::pos2(right, rect.center().y - galley.size().y / 2.0);
             ui.painter().galley(pos, galley, p.muted);
@@ -1001,7 +999,7 @@ fn nav_row(
             break_anywhere: true,
             overflow_character: Some('…'),
         };
-        let galley = ui.fonts(|f| f.layout_job(job));
+        let galley = ui.painter().layout_job(job);
         let pos = egui::pos2(left, rect.center().y - galley.size().y / 2.0);
         ui.painter().galley(pos, galley, Color32::PLACEHOLDER);
     }

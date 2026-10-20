@@ -3,6 +3,12 @@
 All notable changes to Quillwright are listed here. Versions follow
 [semantic versioning](https://semver.org).
 
+## 0.3.0 (2026-10-20)
+
+- Upgraded the interface toolkit (egui and eframe) from 0.27 to 0.37. Text is rendered
+  noticeably better, and the update brings many releases of fixes to text input, IME,
+  accessibility, and window handling. Layout, themes, and shortcuts are unchanged.
+
 ## 0.2.0 (2026-10-20)
 
 ### Export is now built in

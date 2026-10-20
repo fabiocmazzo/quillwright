@@ -132,7 +132,7 @@ impl MarkdownApp {
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
                         ui.label("Page size");
-                        egui::ComboBox::from_id_source("export_page_size")
+                        egui::ComboBox::from_id_salt("export_page_size")
                             .selected_text(state.page_size.label())
                             .show_ui(ui, |ui| {
                                 for size in PageSize::ALL {

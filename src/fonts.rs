@@ -32,7 +32,7 @@ impl Default for Typography {
 }
 
 pub fn typography(ctx: &egui::Context) -> Typography {
-    ctx.data(|data| data.get_temp(egui::Id::new("editor_typography")))
+    ctx.data(|data| data.get_temp(egui::Id::unique("editor_typography")))
         .unwrap_or_default()
 }
 
@@ -96,7 +96,7 @@ fn definitions(db: &Database, name: &str) -> FontDefinitions {
         for (style, data) in STYLES.iter().zip(bytes) {
             fonts.font_data.insert(
                 format!("{family_name}-{style}"),
-                FontData::from_static(data),
+                std::sync::Arc::new(FontData::from_static(data)),
             );
         }
     }
@@ -104,7 +104,9 @@ fn definitions(db: &Database, name: &str) -> FontDefinitions {
         let mut chain = Vec::new();
         if let Some(data) = system_face(db, name.trim(), variant) {
             let key = format!("system-{}", style);
-            fonts.font_data.insert(key.clone(), data);
+            fonts
+                .font_data
+                .insert(key.clone(), std::sync::Arc::new(data));
             chain.push(key);
         }
         if bundled(name.trim()).is_some() {
@@ -147,7 +149,7 @@ fn install_with_database(ctx: &egui::Context, config: &crate::editor::EditorConf
         line_height: finite_positive(config.line_height, defaults.line_height).clamp(1.0, 3.0),
     };
     ctx.set_fonts(definitions(db, &config.font_family));
-    ctx.data_mut(|data| data.insert_temp(egui::Id::new("editor_typography"), metrics));
+    ctx.data_mut(|data| data.insert_temp(egui::Id::unique("editor_typography"), metrics));
 }
 
 /// Change the editor text size at runtime (fonts stay installed). Returns the clamped size.
@@ -158,7 +160,7 @@ pub fn set_size(ctx: &egui::Context, size: f32) -> f32 {
     } else {
         Typography::default().size
     };
-    ctx.data_mut(|data| data.insert_temp(egui::Id::new("editor_typography"), metrics));
+    ctx.data_mut(|data| data.insert_temp(egui::Id::unique("editor_typography"), metrics));
     metrics.size
 }
 
@@ -188,9 +190,11 @@ mod tests {
                 let chain = &fonts.families[&family(variant % 2 == 1, variant >= 2)];
                 assert_eq!(chain[0], format!("{expected}-{}", style));
                 let data = &fonts.font_data[&chain[0]];
-                assert!(
-                    ab_glyph::FontRef::try_from_slice_and_index(&data.font, data.index).is_ok()
-                );
+                assert!(ab_glyph::FontRef::try_from_slice_and_index(
+                    (*data.font).as_ref(),
+                    data.index
+                )
+                .is_ok());
             }
         }
     }
@@ -240,8 +244,8 @@ mod tests {
                     ..Default::default()
                 };
                 install_with_database(&ctx, &config, &Database::new());
-                let _ = ctx.run(Default::default(), |ctx| {
-                    egui::CentralPanel::default().show(ctx, |ui| {
+                ctx.run_ui(Default::default(), |ui| {
+                    egui::CentralPanel::default().show(ui, |ui| {
                         for active in [None, Some((0, source.chars().count()))] {
                             let projection =
                                 crate::live_preview::project(ui, source, 180.0, active);
@@ -263,30 +267,27 @@ mod tests {
                                         .job
                                         .sections
                                         .iter()
-                                        .find(|s| s.byte_range.contains(&index))
+                                        .find(|s| s.byte_range.contains(&index.into()))
                                         .unwrap();
                                     assert_eq!(section.format.font_id.family, family(bold, italic));
                                     assert!(!section.format.italics); // real italic face, no synthetic slant
                                 }
                             }
-                            let galley = ui.fonts(|f| f.layout_job(projection.job.clone()));
+                            let galley = ui.painter().layout_job(projection.job.clone());
                             let mut cursor = egui::text::CCursor::new(display);
                             cursor.prefer_next_row = true;
-                            let rect = galley.pos_from_ccursor(cursor);
+                            let rect = galley.pos_from_cursor(cursor);
                             let hit = galley
                                 .cursor_from_pos(egui::vec2(rect.left() + 0.1, rect.center().y));
-                            assert_eq!(
-                                projection.to_source(hit.ccursor.index),
-                                src,
-                                "{name} at {size}"
-                            );
+                            assert_eq!(projection.to_source(hit.index.0), src, "{name} at {size}");
                             assert!(galley.rows.len() > 3);
                         }
                         let empty = crate::live_preview::project(ui, "", 180.0, Some((0, 0)));
-                        let galley = ui.fonts(|f| f.layout_job(empty.job));
-                        assert!((galley.rows[0].rect.height() - size * 1.6).abs() < 2.0);
+                        let galley = ui.painter().layout_job(empty.job);
+                        assert!((galley.rows[0].rect().height() - size * 1.6).abs() < 2.0);
                     });
-                });
+                })
+                .drop_without_applying_deltas();
             }
         }
     }

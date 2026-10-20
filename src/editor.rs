@@ -1,9 +1,9 @@
 //! A source-backed editor with a separate, mapped Markdown display projection.
 use crate::live_preview::{self, Projection};
 use egui::{
-    text::{CCursor, CCursorRange, CursorRange},
+    text::{CCursor, CCursorRange},
     text_selection::{visuals, TextCursorState},
-    Event, Key, TextStyle, Ui,
+    Event, ImeEvent, Key, TextStyle, Ui,
 };
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -79,7 +79,7 @@ fn source_line_rows(source: &str, projection: &Projection, galley: &egui::Galley
         .map(|start| {
             let mut cursor = CCursor::new(projection.to_display(start));
             cursor.prefer_next_row = true;
-            galley.from_ccursor(cursor).rcursor.row
+            galley.layout_from_cursor(cursor).row
         })
         .collect()
 }
@@ -105,31 +105,28 @@ impl Editor {
     }
 
     fn replace(&mut self, source: &mut String, replacement: &str) {
-        let [start, end] = self.selection.sorted();
+        let [start, end] = self.selection.sorted_cursors();
         source.replace_range(
-            byte(source, start.index)..byte(source, end.index),
+            byte(source, start.index.0)..byte(source, end.index.0),
             replacement,
         );
-        self.selection = CCursorRange::one(CCursor::new(start.index + replacement.chars().count()));
+        self.selection =
+            CCursorRange::one(CCursor::new(start.index.0 + replacement.chars().count()));
         self.preferred_x = None;
     }
 
-    fn displayed(&self, projection: &Projection, galley: &egui::Galley) -> CursorRange {
-        CursorRange {
-            primary: galley.from_ccursor(CCursor::new(
-                projection.to_display(self.selection.primary.index),
-            )),
-            secondary: galley.from_ccursor(CCursor::new(
-                projection.to_display(self.selection.secondary.index),
-            )),
-        }
+    fn displayed(&self, projection: &Projection) -> CCursorRange {
+        CCursorRange::two(
+            CCursor::new(projection.to_display(self.selection.secondary.index.0)),
+            CCursor::new(projection.to_display(self.selection.primary.index.0)),
+        )
     }
 
-    fn set_from_display(&mut self, range: CursorRange, projection: &Projection) {
-        self.selection = CCursorRange {
-            primary: CCursor::new(projection.to_source(range.primary.ccursor.index)),
-            secondary: CCursor::new(projection.to_source(range.secondary.ccursor.index)),
-        };
+    fn set_from_display(&mut self, range: CCursorRange, projection: &Projection) {
+        self.selection = CCursorRange::two(
+            CCursor::new(projection.to_source(range.secondary.index.0)),
+            CCursor::new(projection.to_source(range.primary.index.0)),
+        );
     }
 
     fn projection(&self, ui: &Ui, source: &str, width: f32, focused: bool) -> Projection {
@@ -137,7 +134,10 @@ impl Editor {
             ui,
             source,
             width,
-            focused.then_some((self.selection.primary.index, self.selection.secondary.index)),
+            focused.then_some((
+                self.selection.primary.index.0,
+                self.selection.secondary.index.0,
+            )),
         )
     }
 
@@ -156,28 +156,29 @@ impl Editor {
             ui.memory_mut(|mem| mem.request_focus(id));
         }
         let count = source.chars().count();
-        self.selection.primary.index = self.selection.primary.index.min(count);
-        self.selection.secondary.index = self.selection.secondary.index.min(count);
+        self.selection = CCursorRange::two(
+            CCursor::new(self.selection.secondary.index.0.min(count)),
+            CCursor::new(self.selection.primary.index.0.min(count)),
+        );
         let available_width = ui.available_width().max(1.0);
         let gutter_font = egui::FontId::monospace(12.0);
         let gutter = if config.line_numbers {
             let count = source.bytes().filter(|&b| b == b'\n').count() + 1;
-            ui.fonts(|fonts| {
-                fonts
-                    .layout_no_wrap(
-                        count.to_string(),
-                        gutter_font.clone(),
-                        ui.visuals().weak_text_color(),
-                    )
-                    .size()
-                    .x
-            }) + 20.0
+            ui.painter()
+                .layout_no_wrap(
+                    count.to_string(),
+                    gutter_font.clone(),
+                    ui.visuals().weak_text_color(),
+                )
+                .size()
+                .x
+                + 20.0
         } else {
             0.0
         };
         let (left, width) = column_geometry(available_width, gutter, config);
         ui.ctx()
-            .data_mut(|d| d.insert_temp(egui::Id::new("editor_dim"), config.dim_paragraphs));
+            .data_mut(|d| d.insert_temp(egui::Id::unique("editor_dim"), config.dim_paragraphs));
         // Typewriter mode needs room to scroll the last line up to the middle.
         let tail = if config.typewriter {
             viewport_height * 0.5
@@ -186,7 +187,7 @@ impl Editor {
         };
         let focused = ui.memory(|mem| mem.has_focus(id));
         let projection = self.projection(ui, source, width, focused);
-        let galley = ui.fonts(|fonts| fonts.layout_job(projection.job.clone()));
+        let galley = ui.painter().layout_job(projection.job.clone());
         let height = galley.size().y.max(ui.text_style_height(&TextStyle::Body));
         let (_, rect) = ui.allocate_space(egui::vec2(
             available_width,
@@ -208,7 +209,7 @@ impl Editor {
         if pointer_event || response.double_clicked() || response.triple_clicked() {
             if let Some(pos) = response.interact_pointer_pos() {
                 let cursor = galley.cursor_from_pos(pos - origin);
-                let mut state = TextCursorState::from(self.displayed(&projection, &galley));
+                let mut state = TextCursorState::from(self.displayed(&projection));
                 if state.pointer_interaction(ui, &response, cursor, &galley, response.dragged()) {
                     self.set_from_display(state.range(&galley).unwrap(), &projection);
                     self.preferred_x = None;
@@ -232,27 +233,24 @@ impl Editor {
             ui.memory_mut(|mem| mem.set_focus_lock_filter(id, filter));
             for event in ui.input(|i| i.filtered_events(&filter)) {
                 let before = (self.selection, source.clone());
-                if matches!(
-                    &event,
-                    Event::Cut | Event::Paste(_) | Event::CompositionStart
-                ) {
+                if matches!(&event, Event::Cut | Event::Paste(_))
+                    || (self.composition.is_none()
+                        && matches!(&event, Event::Ime(ImeEvent::Preedit { text, .. }) if !text.is_empty()))
+                {
                     // Keep discrete edits separate from a preceding typing burst.
                     self.undo.add_undo(&before);
                 }
                 match event {
                     Event::Copy | Event::Cut => {
-                        if self.selection.primary.index == self.selection.secondary.index {
+                        if self.selection.is_empty() {
                             // Match TextEdit's copy/cut-all behavior with no selection.
                             self.selection = CCursorRange::two(
                                 CCursor::new(0),
                                 CCursor::new(source.chars().count()),
                             );
                         }
-                        let [a, b] = self.selection.sorted();
-                        ui.output_mut(|out| {
-                            out.copied_text =
-                                source[byte(source, a.index)..byte(source, b.index)].to_owned()
-                        });
+                        ui.ctx()
+                            .copy_text(self.selection.slice_str(source).to_owned());
                         if matches!(event, Event::Cut) {
                             self.replace(source, "");
                         } else {
@@ -270,19 +268,24 @@ impl Editor {
                     Event::Paste(text) if self.composition.is_none() && !text.is_empty() => {
                         self.replace(source, &text.replace("\r\n", "\n").replace('\r', "\n"));
                     }
-                    Event::CompositionStart => self.composition = Some(self.selection),
-                    Event::CompositionUpdate(text) => {
-                        if let Some(range) = self.composition {
+                    // An IME preedit replaces the previous preedit text; an empty
+                    // preedit dismisses it. A commit replaces it with the final text.
+                    Event::Ime(ImeEvent::Preedit { text, .. }) if text != "\n" && text != "\r" => {
+                        let range = self.composition.unwrap_or(self.selection);
+                        if self.composition.is_some() || !text.is_empty() {
                             self.selection = range;
-                            let start = range.sorted()[0];
+                            let start = range.sorted_cursors()[0];
                             self.replace(source, &text);
-                            self.composition =
-                                Some(CCursorRange::two(start, self.selection.primary));
+                            self.composition = (!text.is_empty())
+                                .then(|| CCursorRange::two(start, self.selection.primary));
                         }
                     }
-                    Event::CompositionEnd(text) => {
+                    Event::Ime(ImeEvent::Commit(text)) if text != "\n" && text != "\r" => {
                         if let Some(range) = self.composition.take() {
                             self.selection = range;
+                            self.replace(source, &text);
+                        } else if !text.is_empty() {
+                            self.undo.add_undo(&before);
                             self.replace(source, &text);
                         }
                     }
@@ -308,7 +311,7 @@ impl Editor {
                             self.replace(source, "\n");
                         } else if key == Key::Tab && !modifiers.command {
                             if modifiers.shift {
-                                let cursor = self.selection.sorted()[0].index;
+                                let cursor = self.selection.sorted_cursors()[0].index.0;
                                 let start_byte = source[..byte(source, cursor)]
                                     .rfind('\n')
                                     .map_or(0, |i| i + 1);
@@ -333,20 +336,20 @@ impl Editor {
                                 self.replace(source, "\t");
                             }
                         } else if key == Key::Backspace || key == Key::Delete {
-                            if self.selection.primary.index == self.selection.secondary.index {
+                            if self.selection.is_empty() {
                                 let p = self.selection.primary;
                                 let other = if key == Key::Backspace {
                                     if modifiers.ctrl || modifiers.alt {
                                         egui::text_selection::text_cursor_state::ccursor_previous_word(source, p)
                                     } else {
-                                        CCursor::new(p.index.saturating_sub(1))
+                                        p - 1
                                     }
                                 } else if modifiers.ctrl || modifiers.alt {
                                     egui::text_selection::text_cursor_state::ccursor_next_word(
                                         source, p,
                                     )
                                 } else {
-                                    CCursor::new((p.index + 1).min(source.chars().count()))
+                                    CCursor::new((p.index.0 + 1).min(source.chars().count()))
                                 };
                                 self.selection.secondary = other;
                             }
@@ -366,7 +369,7 @@ impl Editor {
             .feed_state(time, &(self.selection, source.clone()));
         // Rebuild after input: cursor and painted text always use the same mapping.
         let projection = self.projection(ui, source, width, focused);
-        let galley = ui.fonts(|fonts| fonts.layout_job(projection.job.clone()));
+        let galley = ui.painter().layout_job(projection.job.clone());
         ui.painter()
             .rect_filled(rect, 0.0, ui.visuals().extreme_bg_color);
         if config.line_numbers {
@@ -383,8 +386,10 @@ impl Editor {
                 .into_iter()
                 .enumerate()
             {
-                let position =
-                    egui::pos2(origin.x - 14.0, origin.y + galley.rows[row].rect.center().y);
+                let position = egui::pos2(
+                    origin.x - 14.0,
+                    origin.y + galley.rows[row].rect().center().y,
+                );
                 ui.painter().text(
                     position,
                     egui::Align2::RIGHT_CENTER,
@@ -394,23 +399,30 @@ impl Editor {
                 );
             }
         }
+        let mut galley = galley;
+        let range = self.displayed(&projection);
+        if focused {
+            visuals::paint_text_selection(&mut galley, ui.visuals(), &range, None);
+        }
         ui.painter()
             .galley(origin, galley.clone(), ui.visuals().text_color());
         if focused {
-            let range = self.displayed(&projection, &galley);
-            visuals::paint_text_selection(
-                ui.painter(),
-                ui.visuals(),
-                origin,
-                &galley,
-                &range,
-                None,
-            );
             let cursor_rect = galley
-                .pos_from_cursor(&range.primary)
+                .pos_from_cursor(range.primary)
                 .translate(origin.to_vec2());
-            visuals::paint_cursor(ui.painter(), ui.visuals(), cursor_rect);
-            ui.output_mut(|out| out.ime = Some(egui::output::IMEOutput { rect, cursor_rect }));
+            visuals::paint_cursor_end(ui.painter(), ui.visuals(), cursor_rect);
+            let to_global = ui
+                .ctx()
+                .layer_transform_to_global(ui.layer_id())
+                .unwrap_or_default();
+            ui.output_mut(|out| {
+                out.ime = Some(egui::output::IMEOutput {
+                    purpose: egui::IMEPurpose::Normal,
+                    rect: to_global * rect,
+                    cursor_rect: to_global * cursor_rect,
+                    should_interrupt_composition: false,
+                })
+            });
             if config.typewriter && scroll_to_cursor && !response.dragged() {
                 ui.scroll_to_rect(cursor_rect, Some(egui::Align::Center));
             } else if scroll_to_cursor || response.dragged() {
@@ -440,11 +452,11 @@ impl Editor {
     ) {
         if matches!(key, Key::ArrowUp | Key::ArrowDown) && !modifiers.command {
             let projection = self.projection(ui, source, width, true);
-            let galley = ui.fonts(|fonts| fonts.layout_job(projection.job.clone()));
-            let mut range = self.displayed(&projection, &galley);
-            let caret = galley.pos_from_cursor(&range.primary);
+            let galley = ui.painter().layout_job(projection.job.clone());
+            let mut range = self.displayed(&projection);
+            let caret = galley.pos_from_cursor(range.primary);
             let x = *self.preferred_x.get_or_insert(caret.left());
-            let row = range.primary.rcursor.row;
+            let row = galley.layout_from_cursor(range.primary).row;
             let target = if key == Key::ArrowUp {
                 row.saturating_sub(1)
             } else {
@@ -457,7 +469,7 @@ impl Editor {
                     galley.end()
                 }
             } else {
-                galley.cursor_from_pos(egui::vec2(x, galley.rows[target].rect.center().y))
+                galley.cursor_from_pos(egui::vec2(x, galley.rows[target].rect().center().y))
             };
             if !modifiers.shift {
                 range.secondary = range.primary;
@@ -469,13 +481,11 @@ impl Editor {
             // caret line is revealed, so there are no invisible cursor stops.
             let job =
                 live_preview::project(ui, source, width, Some((0, source.chars().count()))).job;
-            let galley = ui.fonts(|fonts| fonts.layout_job(job));
-            let mut range = CursorRange {
-                primary: galley.from_ccursor(self.selection.primary),
-                secondary: galley.from_ccursor(self.selection.secondary),
-            };
+            let galley = ui.painter().layout_job(job);
+            let mut range = self.selection;
             if range.on_key_press(ui.ctx().os(), &galley, &modifiers, key) {
-                self.selection = range.as_ccursor_range();
+                range.h_pos = None;
+                self.selection = range;
             }
         }
     }
@@ -491,6 +501,19 @@ mod tests {
         source: String,
         time: f64,
         config: EditorConfig,
+    }
+
+    /// The text the frame put on the clipboard.
+    fn clipboard(output: &egui::FullOutput) -> String {
+        output
+            .platform_output
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                egui::OutputCommand::CopyText(text) => Some(text.clone()),
+                _ => None,
+            })
+            .unwrap_or_default()
     }
 
     impl Harness {
@@ -511,7 +534,7 @@ mod tests {
             pending: Option<(usize, usize)>,
         ) -> egui::FullOutput {
             self.time += 0.1;
-            self.ctx.run(
+            let mut output = self.ctx.run_ui(
                 egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(
                         egui::Pos2::ZERO,
@@ -521,13 +544,16 @@ mod tests {
                     events,
                     ..Default::default()
                 },
-                |ctx| {
-                    egui::CentralPanel::default().show(ctx, |ui| {
+                |ui| {
+                    egui::CentralPanel::default().show(ui, |ui| {
                         self.editor
                             .show(ui, &mut self.source, pending, &self.config, 0.0);
                     });
                 },
-            )
+            );
+            // Headless frames have no renderer to upload font textures to.
+            output.textures_delta.clear();
+            output
         }
         fn key(&mut self, key: Key, modifiers: egui::Modifiers) {
             self.frame(
@@ -557,7 +583,7 @@ mod tests {
         assert_eq!(h.source, format!("{original}\nnew **line**"));
         h.key(Key::A, egui::Modifiers::COMMAND);
         let copied = h.frame(vec![Event::Copy], None);
-        assert_eq!(copied.platform_output.copied_text, h.source);
+        assert_eq!(clipboard(&copied), h.source);
         h.frame(vec![Event::Text("café".into())], None);
         assert_eq!(h.source, "café");
         h.key(Key::Backspace, egui::Modifiers::NONE);
@@ -575,24 +601,27 @@ mod tests {
         let mut h = Harness::new("# One\n**two**\n*three*");
         h.frame(vec![], Some((0, 0)));
         h.key(Key::ArrowDown, egui::Modifiers::NONE);
-        assert_eq!(h.editor.selection.primary.index, 8); // beginning of rendered 'two'
+        assert_eq!(h.editor.selection.primary.index.0, 8); // beginning of rendered 'two'
         h.key(Key::Home, egui::Modifiers::NONE);
-        assert_eq!(h.editor.selection.primary.index, 6); // now revealed source line
+        assert_eq!(h.editor.selection.primary.index.0, 6); // now revealed source line
         h.key(Key::ArrowRight, egui::Modifiers::SHIFT);
-        assert_eq!(h.editor.selection.sorted().map(|c| c.index), [6, 7]);
+        assert_eq!(
+            h.editor.selection.sorted_cursors().map(|c| c.index.0),
+            [6, 7]
+        );
         let copied = h.frame(vec![Event::Copy], None);
-        assert_eq!(copied.platform_output.copied_text, "*");
+        assert_eq!(clipboard(&copied), "*");
         // Cmd/Ctrl+Down and Up jump to the ends of the document on every OS
         // (Ctrl+End means nothing on macOS).
         h.key(Key::ArrowDown, egui::Modifiers::COMMAND);
-        assert_eq!(h.editor.selection.primary.index, h.source.chars().count());
+        assert_eq!(h.editor.selection.primary.index.0, h.source.chars().count());
         h.key(Key::ArrowUp, egui::Modifiers::COMMAND);
-        assert_eq!(h.editor.selection.primary.index, 0);
+        assert_eq!(h.editor.selection.primary.index.0, 0);
         h.key(Key::ArrowDown, egui::Modifiers::SHIFT);
-        assert_eq!(h.editor.selection.secondary.index, 0);
-        assert!(h.editor.selection.primary.index >= 6);
+        assert_eq!(h.editor.selection.secondary.index.0, 0);
+        assert!(h.editor.selection.primary.index.0 >= 6);
         let copied = h.frame(vec![Event::Copy], None);
-        assert!(copied.platform_output.copied_text.starts_with("# One\n"));
+        assert!(clipboard(&copied).starts_with("# One\n"));
     }
 
     #[test]
@@ -621,7 +650,7 @@ mod tests {
             }],
             None,
         );
-        assert_eq!(h.editor.selection.primary.index, 2);
+        assert_eq!(h.editor.selection.primary.index.0, 2);
         h.frame(vec![Event::Text("X".into())], None);
         assert_eq!(h.source, "# XTitle\n\n**bold**");
     }
@@ -631,16 +660,19 @@ mod tests {
         let mut h = Harness::new("**text**");
         h.frame(vec![], Some((2, 6)));
         h.frame(
-            vec![
-                Event::CompositionStart,
-                Event::CompositionUpdate("に".into()),
-            ],
+            vec![Event::Ime(ImeEvent::Preedit {
+                text: "に".into(),
+                active_range_chars: None,
+            })],
             None,
         );
         h.frame(
             vec![
-                Event::CompositionUpdate("日本".into()),
-                Event::CompositionEnd("日本語".into()),
+                Event::Ime(ImeEvent::Preedit {
+                    text: "日本".into(),
+                    active_range_chars: None,
+                }),
+                Event::Ime(ImeEvent::Commit("日本語".into())),
             ],
             None,
         );
@@ -657,7 +689,7 @@ mod tests {
         let end = original.chars().count();
         h.frame(vec![], Some((end, 0)));
         let copied = h.frame(vec![Event::Copy], None);
-        assert_eq!(copied.platform_output.copied_text, original);
+        assert_eq!(clipboard(&copied), original);
         h.frame(vec![Event::Cut], None);
         assert_eq!(h.source, "");
         h.key(Key::Z, egui::Modifiers::COMMAND);
@@ -719,10 +751,10 @@ mod tests {
             }],
             None,
         );
-        assert_eq!(h.editor.selection.secondary.index, 2);
-        assert_eq!(h.editor.selection.primary.index, h.source.chars().count());
+        assert_eq!(h.editor.selection.secondary.index.0, 2);
+        assert_eq!(h.editor.selection.primary.index.0, h.source.chars().count());
         let copied = h.frame(vec![Event::Copy], None);
-        assert_eq!(copied.platform_output.copied_text, "Head\n\n**bold**");
+        assert_eq!(clipboard(&copied), "Head\n\n**bold**");
         h.frame(vec![Event::Text("New".into())], None);
         assert_eq!(h.source, "# New");
     }
@@ -771,11 +803,11 @@ mod tests {
         let mut editor = Editor::default();
         let mut source = "# Heading\n\nA **long bold sentence** that wraps across several rows with a [link](url).\n```\ncode\n```\n".to_string();
         let original = source.clone();
-        let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
+        ctx.run_ui(Default::default(), |ui| {
+            egui::CentralPanel::default().show(ui, |ui| {
                 for active in [None, Some((0, source.chars().count()))] {
                     let projection = live_preview::project(ui, &source, 100.0, active);
-                    let galley = ui.fonts(|fonts| fonts.layout_job(projection.job.clone()));
+                    let galley = ui.painter().layout_job(projection.job.clone());
                     let rows = source_line_rows(&source, &projection, &galley);
                     assert_eq!(rows.len(), 7); // includes empty and trailing source lines
                     assert!(rows.windows(2).all(|pair| pair[0] < pair[1]));
@@ -793,7 +825,8 @@ mod tests {
                 assert!(response.rect.height() >= 600.0);
                 assert_eq!(source, original);
             });
-        });
+        })
+        .drop_without_applying_deltas();
     }
     #[test]
     fn centered_column_with_gutter_preserves_pointer_and_keyboard_offsets() {
@@ -828,13 +861,13 @@ mod tests {
             }],
             None,
         );
-        assert_eq!(h.editor.selection.primary.index, 2);
+        assert_eq!(h.editor.selection.primary.index.0, 2);
         h.frame(vec![Event::Text("é".into())], None);
         assert_eq!(h.source, "# éTitle\n**bold**");
         h.key(Key::Home, egui::Modifiers::NONE);
-        assert_eq!(h.editor.selection.primary.index, 0);
+        assert_eq!(h.editor.selection.primary.index.0, 0);
         h.key(Key::ArrowDown, egui::Modifiers::NONE);
-        assert_eq!(h.editor.selection.primary.index, 11);
+        assert_eq!(h.editor.selection.primary.index.0, 11);
         h.key(Key::Z, egui::Modifiers::COMMAND);
         assert_eq!(h.source, "# Title\n**bold**");
     }

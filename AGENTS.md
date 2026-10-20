@@ -10,7 +10,7 @@ Read this file first, then `README.md` (user-facing behavior) and `docs/RELEASIN
 ## What Quillwright is
 
 A native desktop writing environment for novels and long-form fiction, written in Rust with
-`egui`/`eframe` 0.27. A book is a plain folder of Markdown files (one per chapter, one per
+`egui`/`eframe` 0.37. A book is a plain folder of Markdown files (one per chapter, one per
 character, a world-rules document). The app is designed to run **next to AI agents** that edit
 the same folder: it watches the disk, reloads external changes safely, and offers an assistant
 panel that calls an external AI CLI.
@@ -18,8 +18,8 @@ panel that calls an external AI CLI.
 It started as a fork of [md-echo](https://github.com/fibnas/md-echo) (MIT). The repository is
 `github.com/fabiocmazzo/quillwright`.
 
-**Status (October 2026):** version 0.2.0, the first release with the built-in pure-Rust
-exporter (0.1.0 used pandoc). CI passes on Linux, Windows, and macOS. Releases are built by
+**Status (October 2026):** version 0.3.0, on egui 0.37. Version 0.2.0 introduced the built-in
+pure-Rust exporter (0.1.0 used pandoc). CI passes on Linux, Windows, and macOS. Releases are built by
 GitHub Actions as drafts; the Windows and macOS packages have not been tested on real machines
 yet.
 
@@ -52,7 +52,7 @@ cargo run                                # debug build
 cargo run --release -- path/to/file.md   # open a file directly
 cargo test                               # 67 unit tests, about 1 s
 cargo fmt && cargo clippy --all-targets --locked -- -D warnings
-packaging/linux/build.sh 0.2.0           # AppImage + .tar.gz in dist/ (after a release build)
+packaging/linux/build.sh 0.3.0           # AppImage + .tar.gz in dist/ (after a release build)
 packaging/linux/install-local.sh         # install the release build, menu entry, and icon in ~/.local
 ```
 
@@ -109,7 +109,13 @@ own modules (`workspace.rs`, `saving.rs`, `assistant_ui.rs`, `export_ui.rs`) and
 private state in a sub-struct field (`assistant`, `saving`, `export`). Follow this pattern for
 new features instead of growing `main.rs`.
 
-### The frame (`MarkdownApp::update`)
+### The frame (`eframe::App::ui` for `MarkdownApp`)
+
+eframe hands the app a root `Ui`. Panels (`egui::Panel`, `CentralPanel`) are shown inside that
+`Ui`, so `show_menu_bar`, `show_status_bar`, `show_sidebar`, and `show_assistant_panel` take it;
+windows and areas are still shown on the `Context`. The renderer is glow (OpenGL), as it has
+always been: `Cargo.toml` turns off eframe's default wgpu, and lists `winit` directly only to
+keep its default features (Wayland decorations, loading libwayland at runtime).
 
 In order: apply theme → `sync_with_disk` (watcher reports) → `poll_assistant` → handle a
 window close request (save first or ask) → keyboard shortcuts, which mostly set `pending_*`
@@ -185,7 +191,8 @@ README.
 ## Testing
 
 - Unit tests live next to the code (`#[cfg(test)] mod tests`). `editor.rs` has a `Harness`
-  that drives a headless `egui::Context` with synthetic events.
+  that drives a headless `egui::Context` with synthetic events. Headless frames must clear
+  `textures_delta` (or call `drop_without_applying_deltas`), or egui panics in debug builds.
 - **Tests must pass on Linux, Windows, and macOS.** Lessons learned:
   - egui changes shortcuts per OS (on macOS, Ctrl+key are Emacs bindings and Ctrl+End does
     nothing). Use `Modifiers::COMMAND` combinations that work everywhere. To check locally,
@@ -230,7 +237,7 @@ Roughly in priority order. Each one should keep the ground rules above.
 A longer-term idea, *project kinds* (Novel, Legal case, ...) sharing one core, is described in
 `docs/project-kinds.md`.
 
-1. **Verify the 0.2.0 packages on real Windows and macOS machines.** Check the icon, the
+1. **Verify the 0.3.0 packages on real Windows and macOS machines.** Check the icon, the
    absence of a console window, file dialogs, the first-launch working folder (should be the
    home folder), exporting every format (PDF uses typst in-process), and running the assistant.
 2. **Review agent changes (assistant "phase 2").** When an external change reloads the open
@@ -255,10 +262,10 @@ A longer-term idea, *project kinds* (Novel, Legal case, ...) sharing one core, i
    with epubcheck in CI.
 8. **Code signing and notarization** for Windows and macOS once certificates exist (see
    `docs/RELEASING.md`), plus distribution through Flathub, the AUR, and Homebrew.
-9. **Dependency upgrades:** egui/eframe 0.27 is old, and `rfd` 0.11 pulls `block 0.1.6`, which
-   triggers a future-incompatibility warning on macOS. Upgrade egui deliberately: the custom
-   editor relies on egui text internals (`Galley`, `CursorRange`, cursor movement), so expect
-   API changes and re-run the editor tests on all three OS modes.
+9. **Dependency upgrades:** `rfd` 0.11 pulls `block 0.1.6`, which triggers a
+   future-incompatibility warning on macOS. When upgrading egui again, remember that the
+   custom editor relies on egui text internals (`Galley`, `CCursorRange`, cursor movement,
+   IME events), so expect API changes and re-run the editor tests on all three OS modes.
 10. **Clean up the md-echo leftovers** listed above, and consider splitting `main.rs`
     (find/replace and lint/format tools could move to their own modules).
 

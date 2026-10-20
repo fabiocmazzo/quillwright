@@ -1,6 +1,6 @@
 //! Writing-oriented color themes. The editor page is lighter (or darker) than the
 //! surrounding "desk" so the text column reads like a sheet of paper.
-use egui::{epaint::Shadow, Color32, Context, Rounding, Stroke, Style, Visuals};
+use egui::{epaint::Shadow, Color32, Context, CornerRadius, Stroke, Style, Visuals};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Preset {
@@ -105,34 +105,34 @@ fn visuals(p: &Palette) -> Visuals {
     v.warn_fg_color = p.accent;
     v.selection.bg_fill = mix(p.page, p.accent, if p.dark { 0.35 } else { 0.25 });
     v.selection.stroke = Stroke::new(1.0_f32, p.text);
-    v.text_cursor = Stroke::new(2.0_f32, p.accent);
+    v.text_cursor.stroke = Stroke::new(2.0_f32, p.accent);
     v.window_stroke = Stroke::new(1.0_f32, border);
-    v.window_rounding = Rounding::same(10.0);
-    v.menu_rounding = Rounding::same(8.0);
+    v.window_corner_radius = CornerRadius::same(10);
+    v.menu_corner_radius = CornerRadius::same(8);
     let shadow_alpha = if p.dark { 110 } else { 40 };
     v.window_shadow = Shadow {
-        offset: egui::vec2(0.0, 8.0),
-        blur: 24.0,
-        spread: 0.0,
+        offset: [0, 8],
+        blur: 24,
+        spread: 0,
         color: Color32::from_black_alpha(shadow_alpha),
     };
     v.popup_shadow = Shadow {
-        offset: egui::vec2(0.0, 4.0),
-        blur: 12.0,
-        spread: 0.0,
+        offset: [0, 4],
+        blur: 12,
+        spread: 0,
         color: Color32::from_black_alpha(shadow_alpha / 2),
     };
     v.collapsing_header_frame = false;
     v.indent_has_left_vline = false;
     v.striped = false;
 
-    let rounding = Rounding::same(6.0);
+    let rounding = CornerRadius::same(6);
     let w = &mut v.widgets;
     w.noninteractive.bg_fill = p.desk;
     w.noninteractive.weak_bg_fill = p.desk;
     w.noninteractive.bg_stroke = Stroke::new(1.0_f32, border);
     w.noninteractive.fg_stroke = Stroke::new(1.0_f32, p.text);
-    w.noninteractive.rounding = rounding;
+    w.noninteractive.corner_radius = rounding;
     for (state, amount) in [
         (&mut w.inactive, 0.07),
         (&mut w.hovered, 0.13),
@@ -143,7 +143,7 @@ fn visuals(p: &Palette) -> Visuals {
         state.weak_bg_fill = mix(p.desk, p.text, amount);
         state.bg_stroke = Stroke::NONE;
         state.fg_stroke = Stroke::new(1.0_f32, p.text);
-        state.rounding = rounding;
+        state.corner_radius = rounding;
         state.expansion = 0.0;
     }
     w.inactive.weak_bg_fill = mix(p.desk, p.text, 0.05);
@@ -182,21 +182,23 @@ pub fn apply(ctx: &Context, palette: &Palette, hyperlink: Option<Color32>) {
     if let Some(color) = hyperlink {
         visuals.hyperlink_color = color;
     }
-    let mut style: Style = (*ctx.style()).clone();
+    let mut style: Style = (*ctx.global_style()).clone();
     style.visuals = visuals;
     style.spacing.item_spacing = egui::vec2(8.0, 6.0);
     style.spacing.button_padding = egui::vec2(10.0, 4.0);
-    style.spacing.menu_margin = egui::Margin::same(8.0);
-    style.spacing.window_margin = egui::Margin::same(16.0);
+    style.spacing.menu_margin = egui::Margin::same(8);
+    style.spacing.window_margin = egui::Margin::same(16);
     style.spacing.indent = 14.0;
     style.spacing.interact_size.y = 24.0;
-    ctx.set_style(style);
-    ctx.data_mut(|d| d.insert_temp(egui::Id::new("writing_palette"), *palette));
+    // egui keeps a light and a dark style and follows the system theme; Quillwright's
+    // palette is chosen in its own settings, so both get the same style.
+    ctx.all_styles_mut(|s| *s = style.clone());
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique("writing_palette"), *palette));
 }
 
 /// The palette installed by [`apply`], for widgets that need muted or accent colors.
 pub fn current(ctx: &Context) -> Palette {
-    ctx.data(|d| d.get_temp(egui::Id::new("writing_palette")))
+    ctx.data(|d| d.get_temp(egui::Id::unique("writing_palette")))
         .unwrap_or_else(|| Preset::Night.palette())
 }
 

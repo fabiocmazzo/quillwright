@@ -169,19 +169,20 @@ impl MarkdownApp {
         }
     }
 
-    pub(crate) fn show_assistant_panel(&mut self, ctx: &Context) {
+    pub(crate) fn show_assistant_panel(&mut self, root: &mut Ui) {
+        let ctx = &root.ctx().clone();
         let p = theme::current(ctx);
         let mut action = None;
-        egui::SidePanel::right("assistant")
+        egui::Panel::right("assistant")
             .resizable(true)
-            .default_width(360.0)
-            .width_range(280.0..=640.0)
+            .default_size(360.0)
+            .size_range(280.0..=640.0)
             .frame(
-                egui::Frame::none()
+                egui::Frame::NONE
                     .fill(p.desk)
-                    .inner_margin(egui::Margin::symmetric(14.0, 12.0)),
+                    .inner_margin(egui::Margin::symmetric(14, 12)),
             )
-            .show(ctx, |ui| {
+            .show(root, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new("Assistant")
@@ -416,7 +417,7 @@ impl MarkdownApp {
             ui.colored_label(p.accent, error);
             if !state.details.is_empty() {
                 egui::CollapsingHeader::new(RichText::new("Details").size(12.0).color(p.muted))
-                    .id_source("assistant_details")
+                    .id_salt("assistant_details")
                     .show(ui, |ui| {
                         ui.add(
                             egui::Label::new(RichText::new(&state.details).monospace().size(11.0))
@@ -431,7 +432,7 @@ impl MarkdownApp {
         if !state.prompt.is_empty() {
             ui.add_space(8.0);
             egui::CollapsingHeader::new(RichText::new("Prompt sent").size(12.0).color(p.muted))
-                .id_source("assistant_prompt")
+                .id_salt("assistant_prompt")
                 .show(ui, |ui| {
                     ui.add(
                         egui::Label::new(RichText::new(&state.prompt).monospace().size(11.0))
@@ -461,10 +462,10 @@ impl MarkdownApp {
         );
         let same_file = request.file.as_ref().map(|f| self.working_dir.join(f)) == self.file_path
             || (request.file.is_none() && self.file_path.is_none());
-        egui::Frame::none()
+        egui::Frame::NONE
             .fill(p.page)
-            .rounding(8.0)
-            .inner_margin(egui::Margin::same(12.0))
+            .corner_radius(8)
+            .inner_margin(egui::Margin::same(12))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 if kind == ResultKind::Replacement {
@@ -566,7 +567,7 @@ impl MarkdownApp {
                 let (start, end) = assistant::apply_insertion(&mut self.content, at, &result);
                 self.accepted_suggestion(start, end);
             }
-            PanelAction::Copy(text) => ctx.output_mut(|o| o.copied_text = text),
+            PanelAction::Copy(text) => ctx.copy_text(text),
             PanelAction::Discard => {
                 self.assistant.result = None;
                 self.assistant.error = None;

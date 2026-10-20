@@ -65,7 +65,7 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             fonts::install(&cc.egui_ctx, &app.config.editor);
-            Box::new(app)
+            Ok(Box::new(app))
         }),
     )
 }
@@ -364,7 +364,8 @@ impl Default for MarkdownApp {
 }
 
 impl eframe::App for MarkdownApp {
-    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = &ui.ctx().clone();
         self.ensure_theme(ctx);
         self.sync_with_disk(ctx);
         self.poll_assistant();
@@ -493,21 +494,21 @@ impl eframe::App for MarkdownApp {
         }
 
         if !self.focus_mode {
-            self.show_menu_bar(ctx);
-            self.show_status_bar(ctx);
+            self.show_menu_bar(ui);
+            self.show_status_bar(ui);
             if self.config.view.sidebar {
-                self.show_sidebar(ctx);
+                self.show_sidebar(ui);
             }
             if self.assistant.open {
-                self.show_assistant_panel(ctx);
+                self.show_assistant_panel(ui);
             }
         }
 
         // ==== PAGE ====
         let palette = theme::current(ctx);
         CentralPanel::default()
-            .frame(egui::Frame::none().fill(palette.page))
-            .show(ctx, |ui| {
+            .frame(egui::Frame::NONE.fill(palette.page))
+            .show(ui, |ui| {
                 if self.show_home && self.file_path.is_none() && !self.modified {
                     self.show_home_screen(ui);
                 } else {
@@ -980,7 +981,7 @@ impl MarkdownApp {
         };
 
         let header = egui::CollapsingHeader::new(name)
-            .id_source(path.display().to_string())
+            .id_salt(path.display().to_string())
             .default_open(is_root);
 
         header.show(ui, |ui| self.render_entries(ui, path));
@@ -1661,8 +1662,8 @@ impl MarkdownApp {
         let selection = self.editor.selection;
         let map = |index| file_sync::map_cursor(&self.content, &text, index);
         self.editor.selection = egui::text::CCursorRange::two(
-            egui::text::CCursor::new(map(selection.secondary.index)),
-            egui::text::CCursor::new(map(selection.primary.index)),
+            egui::text::CCursor::new(map(selection.secondary.index.0)),
+            egui::text::CCursor::new(map(selection.primary.index.0)),
         );
         self.content = text.clone();
         self.original_content = text;
