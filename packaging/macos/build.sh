@@ -37,7 +37,10 @@ iconutil -c icns "$iconset" -o "$app/Contents/Resources/Quillwright.icns"
 codesign --force --deep --sign - "$app"
 
 ln -s /Applications "$work/dmg/Applications"
-hdiutil create -volname Quillwright -srcfolder "$work/dmg" -ov -format UDZO \
+# hdiutil's own size estimate for -srcfolder can come out too small ("No space left on
+# device"), so give it the folder size plus a margin.
+size_mb=$(( $(du -sm "$work/dmg" | cut -f1) + 50 ))
+hdiutil create -volname Quillwright -srcfolder "$work/dmg" -size "${size_mb}m" -ov -format UDZO \
   "$dist/Quillwright-$version-macos-universal.dmg"
 
 ls -l "$dist"
