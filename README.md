@@ -208,6 +208,16 @@ cargo install --path .
 
 Or run it directly with `cargo run --release`. To publish a release, see [docs/RELEASING.md](docs/RELEASING.md).
 
+On Linux, `cargo install` does not add Quillwright to the app menu, and Wayland desktops (GNOME, KDE, COSMIC) only show the app's icon when a matching menu entry is installed. To install the binary, the menu entry, and the icon for your user, run:
+
+```bash
+cargo build --release
+packaging/linux/install-local.sh              # installs into ~/.local
+packaging/linux/install-local.sh --uninstall  # removes it again
+```
+
+Set `PREFIX` to install somewhere else. Log out and back in if the icon does not show right away.
+
 ## Usage
 
 ```bash
