@@ -18,9 +18,10 @@ panel that calls an external AI CLI.
 It started as a fork of [md-echo](https://github.com/fibnas/md-echo) (MIT). The repository is
 `github.com/fabiocmazzo/quillwright`.
 
-**Status (October 2026):** version 0.1.0. CI passes on Linux, Windows, and macOS. The first
-release was built by GitHub Actions as a draft; the Windows and macOS packages have not been
-tested on real machines yet.
+**Status (October 2026):** version 0.2.0, the first release with the built-in pure-Rust
+exporter (0.1.0 used pandoc). CI passes on Linux, Windows, and macOS. Releases are built by
+GitHub Actions as drafts; the Windows and macOS packages have not been tested on real machines
+yet.
 
 ## Ground rules
 
@@ -51,7 +52,8 @@ cargo run                                # debug build
 cargo run --release -- path/to/file.md   # open a file directly
 cargo test                               # 67 unit tests, about 1 s
 cargo fmt && cargo clippy --all-targets --locked -- -D warnings
-packaging/linux/build.sh 0.1.0           # AppImage + .tar.gz in dist/ (after a release build)
+packaging/linux/build.sh 0.2.0           # AppImage + .tar.gz in dist/ (after a release build)
+packaging/linux/install-local.sh         # install the release build, menu entry, and icon in ~/.local
 ```
 
 Linux builds need GTK 3 headers (`rfd` uses GTK file dialogs).
@@ -197,6 +199,9 @@ README.
   `XDG_CONFIG_HOME`/`XDG_DATA_HOME`, then activate the window (`xdotool windowactivate
   --sync`) before typing. The first click after launch often only focuses the window, and
   native file dialogs are separate windows (find them with `xdotool search --name`).
+- On Wayland the window icon passed in code is ignored: the compositor matches the app id
+  (`quillwright`, set in `main.rs`) to an installed `quillwright.desktop` and its themed
+  icon. Run `packaging/linux/install-local.sh` to see the icon during development.
 - Window icons on X11 must be small (the app uses `assets/icon/quillwright-128.png`; 512 px
   silently fails).
 
@@ -225,7 +230,7 @@ Roughly in priority order. Each one should keep the ground rules above.
 A longer-term idea, *project kinds* (Novel, Legal case, ...) sharing one core, is described in
 `docs/project-kinds.md`.
 
-1. **Verify the 0.1.0 packages on real Windows and macOS machines.** Check the icon, the
+1. **Verify the 0.2.0 packages on real Windows and macOS machines.** Check the icon, the
    absence of a console window, file dialogs, the first-launch working folder (should be the
    home folder), exporting every format (PDF uses typst in-process), and running the assistant.
 2. **Review agent changes (assistant "phase 2").** When an external change reloads the open
