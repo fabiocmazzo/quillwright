@@ -1,10 +1,12 @@
 //! A source-backed editor with a separate, mapped Markdown display projection.
 use crate::live_preview::{self, Projection};
+use crate::spelling::Speller;
 use egui::{
     text::{CCursor, CCursorRange},
     text_selection::{visuals, TextCursorState},
     Event, ImeEvent, Key, TextStyle, Ui,
 };
+use std::ops::Range;
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
@@ -90,6 +92,8 @@ pub struct Editor {
     undo: egui::util::undoer::Undoer<(CCursorRange, String)>,
     composition: Option<CCursorRange>,
     preferred_x: Option<f32>,
+    /// Source character index of the last right click, for the context menu.
+    pub context_index: Option<usize>,
 }
 
 fn byte(text: &str, index: usize) -> usize {
@@ -115,6 +119,18 @@ impl Editor {
         self.preferred_x = None;
     }
 
+    /// Replace the source characters in `range` with `text`, as one undoable edit.
+    pub fn replace_chars(&mut self, source: &mut String, range: Range<usize>, text: &str) {
+        let count = source.chars().count();
+        self.undo.add_undo(&(self.selection, source.clone()));
+        self.selection = CCursorRange::two(
+            CCursor::new(range.start.min(count)),
+            CCursor::new(range.end.min(count)),
+        );
+        self.replace(source, text);
+        self.composition = None;
+    }
+
     fn displayed(&self, projection: &Projection) -> CCursorRange {
         CCursorRange::two(
             CCursor::new(projection.to_display(self.selection.secondary.index.0)),
@@ -129,8 +145,15 @@ impl Editor {
         );
     }
 
-    fn projection(&self, ui: &Ui, source: &str, width: f32, focused: bool) -> Projection {
-        live_preview::project(
+    fn projection(
+        &self,
+        ui: &Ui,
+        source: &str,
+        width: f32,
+        focused: bool,
+        speller: Option<&Speller>,
+    ) -> Projection {
+        live_preview::project_checked(
             ui,
             source,
             width,
@@ -138,6 +161,7 @@ impl Editor {
                 self.selection.primary.index.0,
                 self.selection.secondary.index.0,
             )),
+            speller,
         )
     }
 
@@ -148,6 +172,7 @@ impl Editor {
         pending: Option<(usize, usize)>,
         config: &EditorConfig,
         viewport_height: f32,
+        speller: Option<&Speller>,
     ) -> egui::Response {
         let id = ui.make_persistent_id("live_markdown_editor");
         if let Some((start, end)) = pending {
@@ -186,7 +211,7 @@ impl Editor {
             TOP_MARGIN
         };
         let focused = ui.memory(|mem| mem.has_focus(id));
-        let projection = self.projection(ui, source, width, focused);
+        let projection = self.projection(ui, source, width, focused, speller);
         let galley = ui.painter().layout_job(projection.job.clone());
         let height = galley.size().y.max(ui.text_style_height(&TextStyle::Body));
         let (_, rect) = ui.allocate_space(egui::vec2(
@@ -216,6 +241,12 @@ impl Editor {
                     self.composition = None;
                     response.request_focus();
                 }
+            }
+        }
+        if response.secondary_clicked() {
+            if let Some(pos) = ui.input(|i| i.pointer.interact_pos()) {
+                let cursor = galley.cursor_from_pos(pos - origin);
+                self.context_index = Some(projection.to_source(cursor.index.0));
             }
         }
         if response.clicked_elsewhere() {
@@ -368,7 +399,7 @@ impl Editor {
         self.undo
             .feed_state(time, &(self.selection, source.clone()));
         // Rebuild after input: cursor and painted text always use the same mapping.
-        let projection = self.projection(ui, source, width, focused);
+        let projection = self.projection(ui, source, width, focused, speller);
         let galley = ui.painter().layout_job(projection.job.clone());
         ui.painter()
             .rect_filled(rect, 0.0, ui.visuals().extreme_bg_color);
@@ -451,7 +482,7 @@ impl Editor {
         modifiers: egui::Modifiers,
     ) {
         if matches!(key, Key::ArrowUp | Key::ArrowDown) && !modifiers.command {
-            let projection = self.projection(ui, source, width, true);
+            let projection = self.projection(ui, source, width, true, None);
             let galley = ui.painter().layout_job(projection.job.clone());
             let mut range = self.displayed(&projection);
             let caret = galley.pos_from_cursor(range.primary);
@@ -547,7 +578,7 @@ mod tests {
                 |ui| {
                     egui::CentralPanel::default().show(ui, |ui| {
                         self.editor
-                            .show(ui, &mut self.source, pending, &self.config, 0.0);
+                            .show(ui, &mut self.source, pending, &self.config, 0.0, None);
                     });
                 },
             );
@@ -622,6 +653,38 @@ mod tests {
         assert!(h.editor.selection.primary.index.0 >= 6);
         let copied = h.frame(vec![Event::Copy], None);
         assert!(clipboard(&copied).starts_with("# One\n"));
+    }
+
+    #[test]
+    fn right_click_records_the_source_word_and_suggestions_replace_with_undo() {
+        let mut h = Harness::new("# Title\n\nThe **harbr** waits");
+        h.frame(vec![], None);
+        // Inside the heading's word, whether or not the "# " marker is revealed.
+        let pos = egui::pos2(40.0, 15.0 + TOP_MARGIN);
+        for pressed in [true, false] {
+            h.frame(
+                vec![
+                    Event::PointerMoved(pos),
+                    Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Secondary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+                None,
+            );
+        }
+        let index = h.editor.context_index.expect("right click recorded");
+        let (_, word) = crate::spelling::word_at(&h.source, index).unwrap();
+        assert_eq!(word, "Title");
+        let start = h.source.find("harbr").unwrap();
+        h.editor
+            .replace_chars(&mut h.source, start..start + 5, "harbor");
+        assert_eq!(h.source, "# Title\n\nThe **harbor** waits");
+        h.frame(vec![], Some((0, 0)));
+        h.key(Key::Z, egui::Modifiers::COMMAND);
+        assert_eq!(h.source, "# Title\n\nThe **harbr** waits");
     }
 
     #[test]
@@ -820,7 +883,7 @@ mod tests {
                     ..Default::default()
                 };
                 let width = ui.available_width();
-                let response = editor.show(ui, &mut source, None, &config, 600.0);
+                let response = editor.show(ui, &mut source, None, &config, 600.0, None);
                 assert_eq!(response.rect.width(), width);
                 assert!(response.rect.height() >= 600.0);
                 assert_eq!(source, original);

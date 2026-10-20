@@ -18,6 +18,7 @@ first and follow the conventions already in use; never impose this one.
 | `characters/` | One `.md` file per character, with a stable kebab-case name (`maria-silva.md`): identity, motivation, voice, relationships, and how they change. |
 | `world-rules.md` | Setting, rules and limits of the world, established facts, chronology, narrative conventions, and open questions. |
 | `AGENT.md` | This guide. It is not part of the manuscript. |
+| `dictionary.txt` | Optional. Words the spell checker should accept (invented names, places, terms), one per line. You may add the story's invented words here. |
 
 There is no manifest, database, front matter, or required metadata. The starter
 files contain blank fields, not canon: an empty field means "not decided yet",

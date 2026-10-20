@@ -15,6 +15,8 @@ struct Style {
     text: bool,
     /// Scene break (`***`, `---`): shown as a centered glyph.
     scene_break: bool,
+    /// Raw HTML, shown as typed and never spell checked.
+    raw: bool,
     replacement: Option<char>,
 }
 
@@ -71,12 +73,15 @@ fn styles(source: &str) -> Vec<Style> {
                 first.scene_break = true;
                 first.replacement = Some('⁂');
             }
-            Event::Text(_)
-            | Event::Html(_)
-            | Event::InlineHtml(_)
-            | Event::FootnoteReference(_) => {
+            Event::Text(_) | Event::FootnoteReference(_) => {
                 for style in &mut result[range] {
                     style.text = true;
+                }
+            }
+            Event::Html(_) | Event::InlineHtml(_) => {
+                for style in &mut result[range] {
+                    style.text = true;
+                    style.raw = true;
                 }
             }
             Event::TaskListMarker(checked) => {
@@ -147,7 +152,51 @@ impl Projection {
 }
 
 pub fn project(ui: &Ui, source: &str, width: f32, selection: Option<(usize, usize)>) -> Projection {
+    project_checked(ui, source, width, selection, None)
+}
+
+/// Per source byte: true inside a misspelled word. Code, links, raw HTML, and the word
+/// that ends at the caret (the one being typed) are not checked.
+fn misspelled(
+    source: &str,
+    styles: &[Style],
+    speller: &crate::spelling::Speller,
+    caret: Option<usize>,
+) -> Vec<bool> {
+    let mut flags = vec![false; source.len()];
+    let caret_byte = caret.map(|c| {
+        source
+            .char_indices()
+            .nth(c)
+            .map_or(source.len(), |(i, _)| i)
+    });
+    for range in crate::spelling::words(source) {
+        let checkable = styles[range.clone()]
+            .iter()
+            .all(|s| s.text && !s.code && !s.link && !s.raw);
+        if !checkable || caret_byte == Some(range.end) {
+            continue;
+        }
+        if !speller.is_correct(&source[range.clone()]) {
+            flags[range].fill(true);
+        }
+    }
+    flags
+}
+
+/// [`project`], underlining words that `speller` does not know.
+pub fn project_checked(
+    ui: &Ui,
+    source: &str,
+    width: f32,
+    selection: Option<(usize, usize)>,
+    speller: Option<&crate::spelling::Speller>,
+) -> Projection {
     let styles = styles(source);
+    let misspelled = speller
+        .filter(|s| s.is_ready())
+        .map(|s| misspelled(source, &styles, s, selection.map(|(primary, _)| primary)));
+    let error_color = ui.visuals().error_fg_color;
     let active = active_lines(source, selection);
     let metrics = crate::fonts::typography(ui.ctx());
     let text_color = ui.visuals().text_color();
@@ -204,7 +253,9 @@ pub fn project(ui: &Ui, source: &str, width: f32, selection: Option<(usize, usiz
             } else {
                 Color32::TRANSPARENT
             },
-            underline: if style.link && !syntax && !editing {
+            underline: if misspelled.as_ref().is_some_and(|m| m[index]) {
+                Stroke::new(1.5_f32, error_color)
+            } else if style.link && !syntax && !editing {
                 Stroke::new(1.0_f32, color)
             } else {
                 Stroke::NONE
@@ -262,6 +313,40 @@ pub fn project(ui: &Ui, source: &str, width: f32, selection: Option<(usize, usiz
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn misspelled_words_are_underlined_except_code_links_html_and_the_word_being_typed() {
+        let ctx = egui::Context::default();
+        crate::fonts::install_test_fonts(&ctx);
+        let speller = crate::spelling::bundled_speller();
+        let source =
+            "# Teh harbor\n\nShe recieve `zzkx` [qqlink](u) <b title=\"wrd\">fine</b> typng";
+        ctx.run_ui(Default::default(), |ui| {
+            egui::CentralPanel::default().show(ui, |ui| {
+                let underlined = |selection, speller| {
+                    let job = project_checked(ui, source, 400.0, selection, speller).job;
+                    let error = ui.visuals().error_fg_color;
+                    job.sections
+                        .iter()
+                        .filter(|s| s.format.underline.color == error)
+                        .map(|s| job.text[s.byte_range.start.0..s.byte_range.end.0].to_string())
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(
+                    underlined(None, Some(&speller)),
+                    ["Teh", "recieve", "typng"]
+                );
+                // The caret right after a word means it is still being typed.
+                let end = source.chars().count();
+                assert_eq!(
+                    underlined(Some((end, end)), Some(&speller)),
+                    ["Teh", "recieve"]
+                );
+                assert!(underlined(None, None).is_empty());
+            });
+        })
+        .drop_without_applying_deltas();
+    }
 
     #[test]
     fn dimming_fades_only_other_paragraphs() {

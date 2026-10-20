@@ -17,6 +17,8 @@ mod manuscript;
 mod process;
 mod project;
 mod saving;
+mod spelling;
+mod spelling_ui;
 mod theme;
 mod workspace;
 use rfd::FileDialog;
@@ -142,6 +144,7 @@ struct MarkdownApp {
     assistant: assistant_ui::AssistantState,
     saving: saving::SavingState,
     export: export_ui::ExportState,
+    spelling: spelling::Speller,
     /// Where version history is kept; None if no data directory is available.
     history_root: Option<PathBuf>,
 }
@@ -186,6 +189,7 @@ struct AppConfig {
     view: ViewConfig,
     assistant: assistant::AssistantConfig,
     export: export::ExportConfig,
+    spelling: spelling::SpellingConfig,
     /// Most recently opened projects, newest first.
     recent_projects: Vec<PathBuf>,
 }
@@ -347,6 +351,7 @@ impl Default for MarkdownApp {
             assistant: assistant_ui::AssistantState::default(),
             saving: saving::SavingState::default(),
             export: export_ui::ExportState::default(),
+            spelling: spelling::Speller::default(),
             history_root: history::default_root(),
         };
 
@@ -369,6 +374,7 @@ impl eframe::App for MarkdownApp {
         self.ensure_theme(ctx);
         self.sync_with_disk(ctx);
         self.poll_assistant();
+        self.poll_spelling(ctx);
         // Closing the window: save first, or ask if that is not possible.
         if ctx.input(|i| i.viewport().close_requested()) && !self.save_before_leaving() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -491,6 +497,7 @@ impl eframe::App for MarkdownApp {
         if self.index_dirty {
             self.index = manuscript::Index::build(&self.working_dir);
             self.index_dirty = false;
+            self.refresh_spelling();
         }
 
         if !self.focus_mode {

@@ -3,6 +3,19 @@
 All notable changes to Quillwright are listed here. Versions follow
 [semantic versioning](https://semver.org).
 
+## 0.4.0 (2026-10-20)
+
+- **Spell checking.** Misspelled words are underlined as you write, and a right-click
+  offers suggestions, "Add to Project Dictionary", and "Ignore for This Session". It uses
+  Hunspell dictionaries through spellbook, in pure Rust and offline. English is built in;
+  other languages come from the system or from the app's dictionaries folder (**View →
+  Spelling Language → Open Dictionaries Folder**).
+- Each book is checked in its own language, the `lang` in its `metadata.yaml`. **View →
+  Spelling Language** sets it there, keeping the rest of the file.
+- Character names from the character sheets are accepted automatically, and added words go
+  to a plain `dictionary.txt` in the project.
+- New `[spelling]` config section (`enabled`, `language`).
+
 ## 0.3.0 (2026-10-20)
 
 - Upgraded the interface toolkit (egui and eframe) from 0.27 to 0.37. Text is rendered

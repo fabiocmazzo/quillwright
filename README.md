@@ -41,6 +41,7 @@ Your work is never locked into a proprietary format. Everything is plain UTF-8 M
 - **Export the manuscript** to Word, EPUB, PDF, OpenDocument, or a web page, built in with nothing else to install: chapters in order, a title page, an optional table of contents, each chapter on a new page, and scene breaks set as a centered *\* \* \**.
 - **Autosave and version history.** Your chapter is saved a moment after you stop typing, when you switch to another window, and before you close the file or the app. Earlier versions of each file are kept on your computer, and **File → Version History...** shows what changed and restores any of them.
 - **Safe saving.** Files are saved atomically (written to a temporary file, then renamed), so agents never read a half-written chapter. Saving, including autosave, refuses to overwrite a file that changed on disk since you opened it, and asks you instead.
+- **Spell checking** in the language of your book, with Hunspell dictionaries. Misspelled words are underlined; right-click one for suggestions. Character names are known automatically, and words you add go to a plain `dictionary.txt` in the project.
 - **Typography for long reading.** Literata and [Atkinson Hyperlegible](https://github.com/googlefonts/atkinson-hyperlegible) are bundled, or use any installed font. Text size changes live (Ctrl+] / Ctrl+[).
 - **Optional line numbers**, find & replace, lint & format with configurable external tools (defaults to [`rumdl`](https://github.com/fibnas/rumdl)), and unsaved-changes protection everywhere.
 
@@ -69,6 +70,14 @@ Chapter titles come from each file's first heading, so renaming a chapter is jus
 The starter files are templates with empty fields, not story content. Everything can be renamed, reorganized, or deleted: there is no manifest, database, or required metadata. Existing folders are never overwritten, and *Open Project* never adds or moves files.
 
 The last opened project is remembered between sessions.
+
+## Spell checking
+
+Misspelled words are underlined in red as you write. Right-click one to pick a suggestion, add the word to the project dictionary, or ignore it until you close the app. The word you are typing is not checked until you finish it, and code, links, and HTML are never checked. Turn it off with **View → Check Spelling**.
+
+- **Language.** Each book is checked in its own language: the `lang` in the project's `metadata.yaml`, the same value export uses. Choose it in **View → Spelling Language**, which writes `lang:` to `metadata.yaml` (creating the file if needed and keeping everything else in it). Books without a language use the default from the config file, or American English.
+- **Dictionaries.** English (en_US) is built in. Quillwright also uses the Hunspell dictionaries installed on your system (on Linux, `/usr/share/hunspell`; for example, the `hunspell-pt-br` package on Debian and Ubuntu). To add a language anywhere, copy its `.aff` and `.dic` files, such as `pt_BR.aff` and `pt_BR.dic` from the [LibreOffice dictionaries](https://github.com/LibreOffice/dictionaries), to the dictionaries folder: `~/.local/share/quillwright/dictionaries` on Linux, `%APPDATA%\quillwright\quillwright\data\dictionaries` on Windows, or `~/Library/Application Support/com.quillwright.quillwright/dictionaries` on macOS. **View → Spelling Language → Open Dictionaries Folder** opens it.
+- **Your words.** Names from the character sheets are accepted automatically. Words you add go to `dictionary.txt` at the project root, one per line, so they travel with the book and agents can read or extend the list. Lines starting with `#` are comments.
 
 ## Saving and version history
 
@@ -321,6 +330,14 @@ session_goal = 0           # words per session; 0 hides the progress bar
 
 Session words count only what you type in Quillwright (net of deletions); text written by an agent and reloaded from disk is not counted. The counter starts at zero each time the app starts.
 
+### Spelling
+
+```toml
+[spelling]
+enabled = true             # underline misspelled words
+language = ""              # default for books without a lang in metadata.yaml; empty: en_US
+```
+
 ### Lint & format tools
 
 ```toml
@@ -365,7 +382,7 @@ The live editor is a custom surface over the plain Markdown buffer, not a full r
 - External changes are never merged with unsaved edits; you choose one version.
 - Variable-font axes and switching font families without a restart are not supported.
 - Paragraph dimming only applies while the page has keyboard focus.
-- There is no spell checker yet.
+- Spell checking has no grammar checking, and the underline is straight rather than wavy. Suggestions for languages with complex compound words can be weaker than in LibreOffice.
 - Version history only covers files open in Quillwright. Changes an agent makes to other files are not copied, and renaming a file starts a new history for it.
 
 ## Tech stack
@@ -376,8 +393,9 @@ The live editor is a custom surface over the plain Markdown buffer, not a full r
 - [`similar`](https://crates.io/crates/similar) — diffing to keep the cursor in place on reload
 - [`fontdb`](https://crates.io/crates/fontdb) / [`ab_glyph`](https://crates.io/crates/ab_glyph) — font discovery and loading
 - [`rfd`](https://crates.io/crates/rfd) — native file dialogs
+- [`spellbook`](https://crates.io/crates/spellbook) — spell checking with Hunspell dictionaries
 
-Bundled fonts are licensed under the SIL Open Font License 1.1; see [font sources and checksums](assets/fonts/README.md) and [licenses](assets/fonts/licenses/).
+Bundled fonts are licensed under the SIL Open Font License 1.1; see [font sources and checksums](assets/fonts/README.md) and [licenses](assets/fonts/licenses/). The bundled en_US dictionary comes from [SCOWL](http://wordlist.aspell.net) by Kevin Atkinson, through the LibreOffice dictionaries; see [its copyright notice](assets/dictionaries/README_en_US.txt).
 
 ## Credits
 

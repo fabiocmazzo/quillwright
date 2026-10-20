@@ -49,6 +49,16 @@ sidebar = true
 # Words to write per session; shown as a progress bar in the status bar. 0 hides it.
 session_goal = 0
 
+[spelling]
+# Underline misspelled words; right-click one for suggestions (View → Check Spelling).
+enabled = true
+# Each book is checked in the lang of its metadata.yaml (View → Spelling Language sets
+# it). This is the Hunspell dictionary for books without one: "en_US", "pt_BR", "es_ES",
+# ... Empty: en_US. en_US is built in; others come from the system's Hunspell folders or
+# from the "dictionaries" folder in Quillwright's data folder.
+# Words you accept for a book are kept in dictionary.txt at the project root.
+language = ""
+
 [tools]
 # Commands are arrays executed with the temporary markdown file path appended.
 # The working directory is set to the configured/active working_dir when present.

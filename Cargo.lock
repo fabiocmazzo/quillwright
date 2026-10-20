@@ -3971,7 +3971,7 @@ dependencies = [
 
 [[package]]
 name = "quillwright"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "ab_glyph",
  "base64 0.22.1",
@@ -3987,6 +3987,7 @@ dependencies = [
  "rfd",
  "serde",
  "similar",
+ "spellbook",
  "tempfile",
  "toml 0.8.23",
  "typst",
@@ -4628,6 +4629,16 @@ checksum = "9f7916fc008ca5542385b89a3d3ce689953c143e9304a9bf8beec1de48994c0d"
 dependencies = [
  "libc",
  "winapi",
+]
+
+[[package]]
+name = "spellbook"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d204abcbdf8e88729306a8d0ca01a79d8a49969fe1f84696909d6dbc4321c1a"
+dependencies = [
+ "foldhash 0.2.0",
+ "hashbrown 0.17.1",
 ]
 
 [[package]]

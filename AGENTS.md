@@ -18,7 +18,7 @@ panel that calls an external AI CLI.
 It started as a fork of [md-echo](https://github.com/fibnas/md-echo) (MIT). The repository is
 `github.com/fabiocmazzo/quillwright`.
 
-**Status (October 2026):** version 0.3.0, on egui 0.37. Version 0.2.0 introduced the built-in
+**Status (October 2026):** version 0.4.0, with spell checking, on egui 0.37. Version 0.2.0 introduced the built-in
 pure-Rust exporter (0.1.0 used pandoc). CI passes on Linux, Windows, and macOS. Releases are built by
 GitHub Actions as drafts; the Windows and macOS packages have not been tested on real machines
 yet.
@@ -50,9 +50,9 @@ yet.
 ```bash
 cargo run                                # debug build
 cargo run --release -- path/to/file.md   # open a file directly
-cargo test                               # 67 unit tests, about 1 s
+cargo test                               # 77 unit tests, about 1 s
 cargo fmt && cargo clippy --all-targets --locked -- -D warnings
-packaging/linux/build.sh 0.3.0           # AppImage + .tar.gz in dist/ (after a release build)
+packaging/linux/build.sh 0.4.0           # AppImage + .tar.gz in dist/ (after a release build)
 packaging/linux/install-local.sh         # install the release build, menu entry, and icon in ~/.local
 ```
 
@@ -91,11 +91,14 @@ XDG_CONFIG_HOME=/tmp/qw/cfg XDG_DATA_HOME=/tmp/qw/data cargo run -- /tmp/qw/book
 | `src/export/pdf.rs` | PDF: the book as typst markup, compiled by typst used as a library |
 | `src/export/xml.rs` | XML escaping and zip package helpers |
 | `src/export_ui.rs` | Export Manuscript window |
+| `src/spelling.rs` | Spell checking: finding and loading Hunspell dictionaries (spellbook), word tokenizing, the project's `dictionary.txt`, check cache, suggestions |
+| `src/spelling_ui.rs` | Editor right-click menu, View → Check Spelling / Spelling Language, refreshing the language and word list with the index |
 | `src/theme.rs` | Paper / Sepia / Night palettes and egui styling |
 | `src/fonts.rs` | Bundled fonts (Literata, Atkinson Hyperlegible) and system font fallback |
 | `src/process.rs` | `command()`: `std::process::Command` without a console window on Windows |
 | `assets/project-template/` | Files created by New Project (embedded with `include_str!`) |
 | `assets/fonts/`, `assets/icon/` | Embedded fonts and the app icon (SVG source plus generated PNG/ICO) |
+| `assets/dictionaries/` | The bundled en_US Hunspell dictionary (SCOWL, from LibreOffice) and its copyright notice |
 | `packaging/`, `.github/workflows/` | Release packaging scripts and CI / release workflows |
 | `docs/config.example.toml` | Documented example config; keep it in sync with the config structs |
 | `build.rs` | Embeds the icon in the Windows executable |
@@ -162,6 +165,22 @@ markers, `AGENT.md`, `world-rules.md`, and the sheets of characters named in the
 of it is truncated or windowed for size. `Job::run` streams stdout and stderr from any command
 and supports cancel; export reuses it. Replacing a selection re-finds the original passage if
 the buffer moved, and refuses when the passage is ambiguous.
+
+### Spelling
+
+`spelling::Speller` lives on `MarkdownApp`. `refresh_spelling` runs whenever the manuscript
+index is rebuilt: it resolves the language (`metadata.yaml` `lang`, else the config default,
+else en_US; the language menu writes `lang:` into `metadata.yaml` for a book, and into the
+config only outside a project),
+loads the dictionary on a background thread (`poll_spelling` picks it up), and reads the
+project's `dictionary.txt` plus the character names. Dictionaries are searched in the user
+data folder (`<data dir>/quillwright/dictionaries`), the system Hunspell folders, and the
+bundled en_US. `live_preview::project_checked` underlines unknown words; code, links, raw
+HTML, and the word that ends at the caret are skipped. Results are cached per word, so
+checking every frame is cheap. The editor records the source index of a right click
+(`Editor::context_index`), and suggestions are applied with `Editor::replace_chars`, which
+keeps undo working. Added words are appended to `dictionary.txt` (plain text, visible to
+agents and Git); ignored words last for the session.
 
 ### Export
 
@@ -237,7 +256,7 @@ Roughly in priority order. Each one should keep the ground rules above.
 A longer-term idea, *project kinds* (Novel, Legal case, ...) sharing one core, is described in
 `docs/project-kinds.md`.
 
-1. **Verify the 0.3.0 packages on real Windows and macOS machines.** Check the icon, the
+1. **Verify the 0.4.0 packages on real Windows and macOS machines.** Check the icon, the
    absence of a console window, file dialogs, the first-launch working folder (should be the
    home folder), exporting every format (PDF uses typst in-process), and running the assistant.
 2. **Review agent changes (assistant "phase 2").** When an external change reloads the open
@@ -245,10 +264,9 @@ A longer-term idea, *project kinds* (Novel, Legal case, ...) sharing one core, i
    exist: the history copy taken before reload (`reload_from_disk`), word diffs
    (`assistant_ui::diff_job`, `similar`), and display mapping in `live_preview`. This is the
    project's main differentiator.
-3. **Spell checking.** The most-felt gap for writers. Options: Hunspell dictionaries through a
-   pure-Rust checker (for example `spellbook`), underlining misspelled words in
-   `live_preview`, with per-project ignore words stored as plain text in the project.
-   Language from config or `metadata.yaml`.
+3. **Spell checking polish.** A wavy underline (painted over the galley), bundling more
+   dictionaries (pt_BR and es are a few MB each; check each license), grammar for English
+   through `harper-core`, and checking the whole manuscript from the sidebar.
 4. **Render Markdown in assistant answers.** Continuity notes currently show raw `**` and `-`.
    Reuse `live_preview` styling for read-only text.
 5. **Update GitHub Actions** that still target Node.js 20 (`actions/checkout`,
@@ -271,7 +289,7 @@ A longer-term idea, *project kinds* (Novel, Legal case, ...) sharing one core, i
 
 ## Known limitations (user-facing)
 
-Documented in the README ("Known limitations" and "Exporting the manuscript"): no spell
-checker, tables and images are not laid out in the editor, version history only covers files
+Documented in the README ("Known limitations" and "Exporting the manuscript"): spell
+checking without grammar, tables and images are not laid out in the editor, version history only covers files
 opened in the app (renaming a file starts a new history), and the Word table of contents must
 be updated by the user after export.

@@ -224,6 +224,7 @@ impl MarkdownApp {
             self.config.editor.line_numbers = numbers;
             self.save_config();
         }
+        self.spelling_menu(ui);
         ui.separator();
         if ui.button("Larger Text\tCtrl+]").clicked() {
             self.change_text_size(ui.ctx(), 1.0);
@@ -761,7 +762,9 @@ impl MarkdownApp {
                 self.pending_selection.take(),
                 &self.config.editor,
                 viewport_height,
+                self.config.spelling.enabled.then_some(&self.spelling),
             );
+            response.context_menu(|ui| self.spelling_context_menu(ui));
             self.editor_has_focus = response.has_focus();
             let range = self.editor.selection;
             let sorted = range.sorted_cursors();
