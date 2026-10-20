@@ -1,0 +1,27 @@
+name: Feature request
+description: An idea that would make writing in Quillwright better
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the writing problem first, before the solution. For example, "I lose track of which chapters a character appears in."
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: How you imagine it working, and any tool that already does it well.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Editor and page
+        - Manuscript sidebar and projects
+        - AI assistant and agents
+        - Export
+        - Installation and packaging
+        - Other

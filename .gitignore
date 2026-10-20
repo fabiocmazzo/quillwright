@@ -22,6 +22,8 @@ tests/tmp/
 *.jpeg
 *.gif
 *.mp4
+# README media is kept.
+!screenshots/*.gif
 
 # === Editor and merge leftovers ===
 *.swp

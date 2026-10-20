@@ -2,8 +2,12 @@
 
 **A focused writing environment for novels and long-form fiction — plain Markdown, built to work alongside AI agents.**
 
+[![Latest release](https://img.shields.io/github/v/release/fabiocmazzo/quillwright)](https://github.com/fabiocmazzo/quillwright/releases/latest)
+[![CI](https://github.com/fabiocmazzo/quillwright/actions/workflows/ci.yml/badge.svg)](https://github.com/fabiocmazzo/quillwright/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](https://www.rust-lang.org)
+
+**[Download for Linux, Windows, or macOS](https://github.com/fabiocmazzo/quillwright/releases/latest)** · [Installation](#installation) · [Writing with AI agents](#writing-with-ai-agents) · [Discussions](https://github.com/fabiocmazzo/quillwright/discussions)
 
 ---
 
@@ -12,6 +16,16 @@ Quillwright is a native desktop app, written in Rust with [`egui`](https://docs.
 ![Quillwright with the Paper theme: manuscript sidebar, chapter outline, and the page](screenshots/paper.png)
 
 Your work is never locked into a proprietary format. Everything is plain UTF-8 Markdown that you can version with Git, open in any editor, or hand to any tool.
+
+## Why Quillwright
+
+- **Your book stays yours.** Word processors and writing apps such as Scrivener keep the book in their own format. Quillwright keeps it as plain Markdown files: readable in fifty years, easy to back up, and easy to put under Git.
+- **Built for working with AI, not replaced by it.** General editors such as Obsidian or VS Code don't know what a chapter or a character is, and AI writing services want your text on their servers. Quillwright understands a book's structure, works side by side with the agents you already use (Claude Code, Codex, or a local model with Ollama), and never lets an AI change your text without your approval.
+- **One small app, no setup.** It's a single native program for Linux, Windows, and macOS, with export to Word, EPUB, and PDF built in. There are no accounts, subscriptions, or API keys.
+
+![An agent adds a chapter and revises the open one: the sidebar and the page update on their own](screenshots/agent-sync.gif)
+
+*An agent drafts a new chapter and revises the one you have open. Quillwright picks up both changes without you saving, reloading, or losing your place.*
 
 ## Highlights
 

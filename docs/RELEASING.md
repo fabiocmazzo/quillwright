@@ -3,6 +3,7 @@
 Releases are built by GitHub Actions ([`.github/workflows/release.yml`](../.github/workflows/release.yml)) when a version tag is pushed.
 
 1. Update `version` in `Cargo.toml` (for example `0.2.0`) and run `cargo build` so `Cargo.lock` picks it up.
+   Add a section for the version to `CHANGELOG.md`; it is used as the release notes.
 2. Commit, then tag and push. The tag must match the version in `Cargo.toml`, or the workflow stops:
 
    ```bash
