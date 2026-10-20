@@ -1,14 +1,14 @@
 //! The Export Manuscript window.
 use crate::{
-    assistant::Job,
-    export::{self, Format},
+    export::{self, Format, PageSize},
     manuscript, theme, MarkdownApp,
 };
 use eframe::egui;
 use egui::{Context, RichText};
 use rfd::FileDialog;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 
 #[derive(Default)]
 pub struct ExportState {
@@ -16,24 +16,38 @@ pub struct ExportState {
     title: String,
     author: String,
     format: Format,
+    language: String,
+    page_size: PageSize,
     table_of_contents: bool,
-    /// `pandoc --version`, or None if pandoc could not be run.
-    pandoc: Option<String>,
-    engines: Vec<String>,
-    running: Option<Running>,
+    /// The export running on a background thread.
+    running: Option<mpsc::Receiver<Outcome>>,
     outcome: Option<Outcome>,
 }
 
-struct Running {
-    job: Job,
-    output: PathBuf,
-    /// Deleted when the export finishes.
-    _filter: tempfile::NamedTempFile,
+enum Outcome {
+    Done {
+        path: PathBuf,
+        warnings: Vec<String>,
+    },
+    Failed {
+        error: String,
+    },
 }
 
-enum Outcome {
-    Done { path: PathBuf, warnings: String },
-    Failed { error: String, details: String },
+/// Write the file next to its destination, then move it into place, so a
+/// failed export never leaves half a file behind.
+fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let dir = path
+        .parent()
+        .filter(|d| !d.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let mut file = tempfile::Builder::new()
+        .prefix(".quillwright-export-")
+        .tempfile_in(dir)?;
+    file.write_all(bytes)?;
+    file.as_file().sync_all()?;
+    file.persist(path).map_err(|e| e.error)?;
+    Ok(())
 }
 
 impl MarkdownApp {
@@ -49,20 +63,12 @@ impl MarkdownApp {
             .unwrap_or_else(|| export::title_from_folder(&self.working_dir));
         state.author = config.author.clone();
         state.format = config.format;
+        state.language = config.language.clone();
+        state.page_size = config.page_size;
         state.table_of_contents = config.table_of_contents;
-        state.pandoc = export::pandoc_version(&config.pandoc);
-        state.engines = export::installed_pdf_engines();
         if state.running.is_none() {
             state.outcome = None;
         }
-    }
-
-    fn pdf_engine(&self) -> Option<String> {
-        self.config
-            .export
-            .pdf_engine
-            .clone()
-            .or_else(|| self.export.engines.first().cloned())
     }
 
     pub(crate) fn show_export_window(&mut self, ctx: &Context) {
@@ -77,12 +83,10 @@ impl MarkdownApp {
             .as_deref()
             .map(|path| (path, self.current_words));
         let words = self.index.manuscript_words(open_words);
-        let pdf_engine = self.pdf_engine();
         let project = self.working_dir.clone();
 
         let mut open = true;
         let mut start = false;
-        let mut cancel = false;
         let mut reveal = None;
         let state = &mut self.export;
         egui::Window::new("Export Manuscript")
@@ -92,21 +96,6 @@ impl MarkdownApp {
             .default_width(420.0)
             .max_width(420.0)
             .show(ctx, |ui| {
-                let Some(version) = &state.pandoc else {
-                    ui.label("Exporting needs pandoc, a free document converter.");
-                    ui.hyperlink_to("Install pandoc", "https://pandoc.org/installing.html");
-                    ui.label(
-                        RichText::new(
-                            "Linux: install the pandoc package (pandoc-cli on Arch). \
-                             macOS: brew install pandoc. Then open this window again. \
-                             If pandoc is not on your PATH, set [export] pandoc in the config file.",
-                        )
-                        .size(12.5)
-                        .color(p.muted),
-                    );
-                    return;
-                };
-
                 egui::Grid::new("export_fields")
                     .num_columns(2)
                     .spacing([12.0, 8.0])
@@ -117,35 +106,40 @@ impl MarkdownApp {
                         ui.label("Author");
                         ui.text_edit_singleline(&mut state.author);
                         ui.end_row();
+                        ui.label("Language");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut state.language)
+                                .hint_text("en, pt-BR, es…"),
+                        )
+                        .on_hover_text(
+                            "Used for hyphenation and by e-readers. \
+                             Empty: the lang in metadata.yaml, or English.",
+                        );
+                        ui.end_row();
                     });
                 ui.add_space(8.0);
 
                 for format in Format::ALL {
-                    let available = format != Format::Pdf || pdf_engine.is_some();
-                    ui.add_enabled_ui(available, |ui| {
-                        let response = ui
-                            .radio(state.format == format, format.label())
-                            .on_hover_text(format.hint())
-                            .on_disabled_hover_text(
-                                "PDF needs a PDF engine: install typst (small and fast) \
-                                 or a LaTeX distribution.",
-                            );
-                        if response.clicked() {
-                            state.format = format;
-                        }
-                    });
-                }
-                if state.format == Format::Pdf && pdf_engine.is_none() {
-                    state.format = Format::Docx;
-                }
-                if state.format == Format::Pdf {
-                    if let Some(engine) = &pdf_engine {
-                        ui.label(
-                            RichText::new(format!("Using {engine}"))
-                                .size(12.5)
-                                .color(p.muted),
-                        );
+                    if ui
+                        .radio(state.format == format, format.label())
+                        .on_hover_text(format.hint())
+                        .clicked()
+                    {
+                        state.format = format;
                     }
+                }
+                if state.format.has_pages() {
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        ui.label("Page size");
+                        egui::ComboBox::from_id_source("export_page_size")
+                            .selected_text(state.page_size.label())
+                            .show_ui(ui, |ui| {
+                                for size in PageSize::ALL {
+                                    ui.selectable_value(&mut state.page_size, size, size.label());
+                                }
+                            });
+                    });
                 }
                 ui.add_space(4.0);
                 ui.checkbox(&mut state.table_of_contents, "Table of contents");
@@ -167,7 +161,6 @@ impl MarkdownApp {
                 if let Some(name) = reference.filter(|n| project.join(n).is_file()) {
                     notes.push(format!("Styles from {name}"));
                 }
-                notes.push(version.clone());
                 for note in notes {
                     ui.label(RichText::new(note).size(12.5).color(p.muted));
                 }
@@ -177,9 +170,6 @@ impl MarkdownApp {
                     ui.horizontal(|ui| {
                         ui.spinner();
                         ui.label("Exporting…");
-                        if ui.button("Cancel").clicked() {
-                            cancel = true;
-                        }
                     });
                 } else if ui
                     .add_enabled(chapters > 0, egui::Button::new("Export…"))
@@ -202,20 +192,19 @@ impl MarkdownApp {
                                 reveal = path.parent().map(PathBuf::from);
                             }
                         });
-                        if !warnings.trim().is_empty() {
-                            ui.collapsing("Pandoc warnings", |ui| {
-                                ui.label(RichText::new(warnings.trim()).size(12.0).color(p.muted));
-                            });
+                        if !warnings.is_empty() {
+                            egui::ScrollArea::vertical()
+                                .max_height(140.0)
+                                .show(ui, |ui| {
+                                    for warning in warnings {
+                                        ui.label(RichText::new(warning).size(12.0).color(p.muted));
+                                    }
+                                });
                         }
                     }
-                    Some(Outcome::Failed { error, details }) => {
+                    Some(Outcome::Failed { error }) => {
                         ui.separator();
                         ui.colored_label(p.accent, error);
-                        if !details.trim().is_empty() {
-                            egui::ScrollArea::vertical().max_height(160.0).show(ui, |ui| {
-                                ui.label(RichText::new(details.trim()).size(12.0).color(p.muted));
-                            });
-                        }
                     }
                     None => {}
                 }
@@ -224,16 +213,10 @@ impl MarkdownApp {
         if !open {
             self.export.open = false;
         }
-        if cancel {
-            if let Some(running) = &self.export.running {
-                running.job.cancel();
-            }
-        }
         if let Some(path) = reveal {
             if let Err(err) = export::open_with_system(&path) {
                 self.export.outcome = Some(Outcome::Failed {
                     error: format!("Could not open {}: {err}", path.display()),
-                    details: String::new(),
                 });
             }
         }
@@ -251,6 +234,8 @@ impl MarkdownApp {
         let config = &mut self.config.export;
         config.format = format;
         config.author = self.export.author.trim().to_string();
+        config.language = self.export.language.trim().to_string();
+        config.page_size = self.export.page_size;
         config.table_of_contents = self.export.table_of_contents;
         config
             .titles
@@ -273,11 +258,11 @@ impl MarkdownApp {
         self.save_config();
 
         // The open chapter is exported as it is in the editor, saved or not.
-        let chapters: Vec<export::Chapter> = self
+        let sources: Vec<export::Source> = self
             .index
             .chapters
             .iter()
-            .map(|entry| export::Chapter {
+            .map(|entry| export::Source {
                 title: entry.title.clone(),
                 text: if self.file_path.as_ref() == Some(&entry.path) {
                     self.content.clone()
@@ -286,69 +271,49 @@ impl MarkdownApp {
                 },
             })
             .collect();
-        let book = export::assemble(&chapters);
+        let options = export::Options {
+            format,
+            title,
+            author: self.config.export.author.clone(),
+            language: self.config.export.language.clone(),
+            page_size: self.export.page_size,
+            table_of_contents: self.export.table_of_contents,
+        };
 
-        let result = (|| -> std::io::Result<Running> {
-            let mut filter = tempfile::Builder::new()
-                .prefix("quillwright-export-")
-                .suffix(".lua")
-                .tempfile()?;
-            filter.write_all(export::FILTER.as_bytes())?;
-            filter.flush()?;
-            let options = export::Options {
-                format,
-                title,
-                author: self.config.export.author.clone(),
-                table_of_contents: self.export.table_of_contents,
-                pdf_engine: self.pdf_engine(),
+        let (send, receive) = mpsc::channel();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let outcome = match export::export(&options, &sources, &project) {
+                Ok(out) => match write_atomically(&output, &out.bytes) {
+                    Ok(()) => Outcome::Done {
+                        path: output,
+                        warnings: out.warnings,
+                    },
+                    Err(err) => Outcome::Failed {
+                        error: format!("Could not save {}: {err}", output.display()),
+                    },
+                },
+                Err(error) => Outcome::Failed { error },
             };
-            let mut command = vec![self.config.export.pandoc.clone()];
-            command.extend(export::arguments(
-                &options,
-                &output,
-                filter.path(),
-                &project,
-            ));
-            let job = Job::run(&command, &project, Some(book), ctx.clone())?;
-            Ok(Running {
-                job,
-                output: output.clone(),
-                _filter: filter,
-            })
-        })();
-        match result {
-            Ok(running) => {
-                self.export.running = Some(running);
-                self.export.outcome = None;
-            }
-            Err(err) => {
-                self.export.outcome = Some(Outcome::Failed {
-                    error: format!("Could not start pandoc: {err}"),
-                    details: String::new(),
-                })
-            }
-        }
+            let _ = send.send(outcome);
+            ctx.request_repaint();
+        });
+        self.export.running = Some(receive);
+        self.export.outcome = None;
     }
 
     fn poll_export(&mut self) {
-        let Some(running) = &mut self.export.running else {
+        let Some(running) = &self.export.running else {
             return;
         };
-        running.job.poll();
-        let Some(result) = running.job.finished.clone() else {
-            return;
+        let outcome = match running.try_recv() {
+            Ok(outcome) => outcome,
+            Err(mpsc::TryRecvError::Empty) => return,
+            Err(mpsc::TryRecvError::Disconnected) => Outcome::Failed {
+                error: "The export stopped unexpectedly.".into(),
+            },
         };
-        let details = running.job.stderr.clone();
-        self.export.outcome = Some(match result {
-            Ok(()) => Outcome::Done {
-                path: running.output.clone(),
-                warnings: details,
-            },
-            Err(error) => Outcome::Failed {
-                error: format!("Export failed: {error}"),
-                details,
-            },
-        });
+        self.export.outcome = Some(outcome);
         self.export.running = None;
         // The export may have been written inside the project.
         self.index_dirty = true;

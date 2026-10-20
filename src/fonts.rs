@@ -3,7 +3,7 @@ use egui::{FontData, FontDefinitions, FontFamily};
 use fontdb::{Database, Family, Query, Style, Weight};
 
 const STYLES: [&str; 4] = ["regular", "bold", "italic", "bold-italic"];
-const LITERATA: [&[u8]; 4] = [
+pub(crate) const LITERATA: [&[u8]; 4] = [
     include_bytes!("../assets/fonts/Literata-Regular.ttf"),
     include_bytes!("../assets/fonts/Literata-Bold.ttf"),
     include_bytes!("../assets/fonts/Literata-Italic.ttf"),

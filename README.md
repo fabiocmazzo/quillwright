@@ -24,7 +24,7 @@ Your work is never locked into a proprietary format. Everything is plain UTF-8 M
 - **A project home.** The start screen continues the chapter you were writing and lists your recent projects.
 - **AI assistant panel (Ctrl+K).** Rewrite a selection, continue a scene, get three alternatives, or check a chapter against your world rules and character sheets, using the AI tool you already have (Claude Code, Codex, a local Ollama model, or any command). Suggestions are shown as a diff and never touch the manuscript until you accept them.
 - **Agent-aware file sync.** Quillwright watches the project folder. When an agent (or any other program) changes a file, the sidebar updates immediately and the open chapter reloads automatically, keeping your cursor near where it was. If you have unsaved edits, you are asked whether to reload or keep your version — nothing is merged or overwritten silently.
-- **Export the manuscript** to Word, EPUB, PDF, OpenDocument, or a web page with [pandoc](https://pandoc.org): chapters in order, a title page, an optional table of contents, each chapter on a new page, and scene breaks set as a centered *\* \* \**.
+- **Export the manuscript** to Word, EPUB, PDF, OpenDocument, or a web page, built in with nothing else to install: chapters in order, a title page, an optional table of contents, each chapter on a new page, and scene breaks set as a centered *\* \* \**.
 - **Autosave and version history.** Your chapter is saved a moment after you stop typing, when you switch to another window, and before you close the file or the app. Earlier versions of each file are kept on your computer, and **File → Version History...** shows what changed and restores any of them.
 - **Safe saving.** Files are saved atomically (written to a temporary file, then renamed), so agents never read a half-written chapter. Saving, including autosave, refuses to overwrite a file that changed on disk since you opened it, and asks you instead.
 - **Typography for long reading.** Literata and [Atkinson Hyperlegible](https://github.com/googlefonts/atkinson-hyperlegible) are bundled, or use any installed font. Text size changes live (Ctrl+] / Ctrl+[).
@@ -72,13 +72,13 @@ Copies live outside the project, in `~/.local/share/quillwright/history/` on Lin
 
 ## Exporting the manuscript
 
-**File → Export Manuscript...** (Ctrl+Shift+E) joins your chapters in sidebar order and converts them with [pandoc](https://pandoc.org/installing.html), which must be installed separately.
+**File → Export Manuscript...** (Ctrl+Shift+E) joins your chapters in sidebar order and writes the book in the format you choose. Everything is built into Quillwright: there is nothing else to install, and nothing is sent anywhere.
 
 | Format | Good for |
 | --- | --- |
 | Word (.docx) | Editors, agents, and Google Docs |
 | EPUB (.epub) | E-readers and beta readers |
-| PDF (.pdf) | Printing and sharing a fixed layout; needs a PDF engine (see below) |
+| PDF (.pdf) | Printing and sharing a fixed layout |
 | OpenDocument (.odt) | LibreOffice |
 | Web page (.html) | A single self-contained file |
 
@@ -90,14 +90,28 @@ The export:
 - uses curly quotes and real dashes, and keeps footnotes, tables, and images (paths relative to the chapter or the project);
 - includes unsaved edits in the open chapter, so you never need to save first.
 
-**PDF** needs a PDF engine. Quillwright uses the first one it finds: [typst](https://github.com/typst/typst) (recommended: a single small program), tectonic, xelatex, lualatex, pdflatex, weasyprint, or wkhtmltopdf.
+The window also asks for the book's **language** (`en`, `pt-BR`, ...), used for hyphenation, the title of the table of contents, and e-reader metadata, and a **page size** for PDF, Word, and OpenDocument: A5 (the default), trade paperback (6 × 9 in), A4, or US Letter. PDFs are laid out with [typst](https://typst.app), built in, in justified Literata with hyphenation and page numbers. Word and OpenDocument files use indented paragraphs without space between them, as editors expect.
 
 **Customising the result**, with optional files in the project root:
 
-- `metadata.yaml`: any [pandoc metadata](https://pandoc.org/MANUAL.html#metadata-variables), for example `lang: pt-BR`, `subtitle`, `date`, or `rights`. The title and author typed in the export window take precedence.
-- `reference.docx` / `reference.odt`: a document whose styles (fonts, margins, headings) are used for Word or OpenDocument exports. Create one with `pandoc -o reference.docx --print-default-data-file reference.docx`, then edit its styles in your word processor.
+- `metadata.yaml`: book details, for example:
 
-In Word exports, the table of contents is a placeholder until you update it: in Word, right-click it and choose *Update Field*; in LibreOffice, use *Tools → Update → Update All*. EPUB, PDF, and HTML tables of contents are complete.
+  ```yaml
+  title: The Salt Road
+  subtitle: A Novel
+  author: Ana Lima
+  lang: pt-BR
+  date: 2026
+  rights: © 2026 Ana Lima
+  description: A short blurb for e-readers.
+  ```
+
+  The title, author, and language typed in the export window take precedence.
+- `reference.docx` / `reference.odt`: a document whose styles (fonts, sizes, headings) replace the built-in ones in Word or OpenDocument exports. Export once, adjust the styles in your word processor (*Body Text*, *First Paragraph*, *Heading 1*, *Title*, ...), and save the file in the project root under that name. Style files made for pandoc work too.
+
+In Word exports, the table of contents is filled in when the file is opened: Word asks whether to update the fields (choose *Yes*); in LibreOffice, use *Tools → Update → Update All*. OpenDocument tables of contents list the chapters but get page numbers only after *Update All*. EPUB, PDF, and HTML tables of contents are complete.
+
+Images are included when they are PNG, JPEG, or GIF files in the project; images on the web are never downloaded. Anything left out is listed in the export window.
 
 ## Writing with AI agents
 
@@ -173,8 +187,6 @@ The Linux builds need a desktop with GTK 3 (used for file dialogs) and glibc 2.3
 - **macOS:** right-click Quillwright in Applications and choose **Open**, then **Open** again. If macOS says the app is damaged, run `xattr -dr com.apple.quarantine /Applications/Quillwright.app` once in Terminal.
 
 Every release includes a `SHA256SUMS.txt` file for checking downloads.
-
-To export manuscripts, also install [pandoc](https://pandoc.org/installing.html), plus [typst](https://github.com/typst/typst) if you want PDF (`sudo pacman -S pandoc-cli typst`, `sudo apt install pandoc`, `brew install pandoc typst`, `winget install JohnMacFarlane.Pandoc Typst.Typst`). Neither is needed for writing.
 
 ### Building from source
 
@@ -313,8 +325,8 @@ The command runs in the project folder. The prompt is written to its standard in
 
 ```toml
 [export]
-pandoc = "pandoc"          # path to pandoc if it is not on your PATH
-# pdf_engine = "xelatex"   # force a PDF engine instead of the first one found
+language = ""              # "en", "pt-BR", ...; empty uses metadata.yaml, or English
+page_size = "a5"           # "a5", "trade" (6 × 9 in), "a4", or "letter"
 ```
 
 The export window also stores your last format, author, table-of-contents choice, book titles per project, and the last export folder here.
@@ -329,6 +341,7 @@ The live editor is a custom surface over the plain Markdown buffer, not a full r
 - External changes are never merged with unsaved edits; you choose one version.
 - Variable-font axes and switching font families without a restart are not supported.
 - Paragraph dimming only applies while the page has keyboard focus.
+- There is no spell checker yet.
 - Version history only covers files open in Quillwright. Changes an agent makes to other files are not copied, and renaming a file starts a new history for it.
 
 ## Tech stack

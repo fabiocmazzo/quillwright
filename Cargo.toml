@@ -24,6 +24,16 @@ ab_glyph = "0.2"
 notify = "8"
 similar = "2"
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+# Export, all pure Rust: typst lays out PDFs, docx-rs writes Word files, and
+# EPUB/ODT are zip packages written by hand.
+typst = "=0.15.1"
+typst-layout = "=0.15.1"
+typst-pdf = "=0.15.1"
+docx-rs = "0.4.22"
+zip = { version = "8.6", default-features = false, features = ["deflate"] }
+yaml-rust2 = "0.13"
+imagesize = "0.15"
+base64 = "0.22"
 
 [[bin]]
 name = "quillwright"

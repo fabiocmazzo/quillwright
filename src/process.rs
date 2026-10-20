@@ -1,4 +1,4 @@
-//! Starting external programs (pandoc, the assistant, lint and format tools).
+//! Starting external programs (the assistant, lint and format tools, opening files).
 use std::ffi::OsStr;
 use std::process::Command;
 

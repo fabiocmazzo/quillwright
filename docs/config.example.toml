@@ -78,9 +78,10 @@ command = ["claude", "-p"]
 prompt_as_argument = false
 
 [export]
-# Manuscript export (File → Export Manuscript..., Ctrl+Shift+E) uses pandoc.
-# Set the full path if pandoc is not on your PATH.
-pandoc = "pandoc"
-# PDF engine; leave unset to use the first one installed
-# (typst, tectonic, xelatex, lualatex, pdflatex, weasyprint, wkhtmltopdf).
-# pdf_engine = "typst"
+# Manuscript export (File → Export Manuscript..., Ctrl+Shift+E) is built in.
+# These are the defaults of the export window, which also saves your choices here.
+# Language of the book, for hyphenation and e-readers ("en", "pt-BR", ...).
+# Empty: the lang in the project's metadata.yaml, or English.
+language = ""
+# Page size for PDF, Word, and OpenDocument: "a5", "trade" (6 x 9 in), "a4", "letter".
+page_size = "a5"
