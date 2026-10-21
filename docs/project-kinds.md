@@ -1,6 +1,8 @@
 # Project kinds: one core, several kinds of writing
 
-Status: idea, not started. Written in October 2026 for later work.
+Status: design agreed in October 2026. Phase 1 (the Novel kind described by a `kind.toml`,
+with no visible change) is done; the prompts it builds were checked to be identical to the
+ones built before.
 
 ## Why
 
@@ -116,59 +118,129 @@ What the assistant would add:
 4. **PDF for filing.** Courts often require PDF (in Brazil, PJe). The built-in typst export
    already covers this; A4 and office styles are needed. PDF/A could be useful later.
 
-## How Quillwright knows the kind of a project
+## Kinds are folders, like themes
 
-The ground rules forbid a manifest or hidden metadata in the project, so the kind must come
-from the visible files or from app data outside the project. Options:
+Each kind is a folder with a `kind.toml` and a `template/` folder. The TOML describes
+everything the app needs to know about the kind; the template is copied by New Project.
+Adding a kind is then content work (Markdown and TOML), not code.
 
-1. **Infer from the folders.** `pieces/` or `facts.md` means a legal case; `chapters/` or
-   `world-rules.md` means a novel. This needs no extra file and survives copying the folder.
-   Ambiguous folders fall back to Novel.
-2. **Remember it in the app config,** keyed by project path, like export titles today. This
-   keeps the project clean, but the kind is lost when the folder moves or is opened on
-   another machine.
-3. **A visible line in `AGENT.md`,** for example `Project kind: legal case`. It is plain
-   text that people and agents can read, but it mixes app behavior with agent instructions.
+```text
+assets/kinds/                    # built-in kinds, embedded in the executable
+├── novel/
+│   ├── kind.toml
+│   └── template/                # copied as-is by New Project
+│       ├── AGENT.md
+│       ├── world-rules.md
+│       ├── chapters/001-opening.md
+│       └── characters/example-character.md
+└── legal/                       # later
+    ├── kind.toml
+    └── template/
+        ├── AGENT.md
+        ├── facts.md
+        ├── timeline.md
+        ├── parties/client.md
+        └── pieces/001-initial-petition.md
+```
 
-Recommendation: use option 1, with option 2 as an override when the inference is wrong
-(**Project → Project Kind...**). Revisit option 3 if inference turns out to be fragile.
+Later, kinds can also be read from the user data folder
+(`<data dir>/quillwright/kinds/<id>/`, the same place as extra dictionaries), so an office
+can keep its own kind with its own `AGENT.md` and `reference.docx` without rebuilding the
+app. A user kind with the same id as a built-in one replaces it.
 
-## Implementation sketch
+The kind folder belongs to the app, never to the writing project: the project stays a plain
+folder of Markdown files with no manifest.
 
-- A new module `src/kinds.rs` with a data-driven `ProjectKind`. Built-in kinds are constants,
-  not user-defined plugins, at least at first. It would hold:
-  - the folder roles (main documents, entity sheets, extra context files), with their labels,
-    the label of their "New" button, and the template for a new file;
-  - the context files the assistant reads, with their size limits;
-  - the assistant actions and their prompt texts;
-  - the export defaults (unit of export, page size, title page, page breaks between
-    documents, typography);
-  - the files for New Project, embedded with `include_str!` from
-    `assets/project-templates/<kind>/`.
-- `manuscript::Index`: replace the fixed chapters, characters, and notes with sections taken
-  from the kind. `CHAPTERS_DIR` and `CHARACTERS_DIR` become fields of the kind.
-- `project.rs`: New Project offers a choice of kind and copies that kind's template.
-- `workspace.rs`: sidebar sections, buttons, and menu labels come from the kind.
-- `assistant.rs`: `StoryContext::gather` reads the kind's context files instead of
-  hard-coded `AGENT.md` and `world-rules.md`, and `Action` becomes kind-specific (or each
-  kind chooses from a shared list).
-- `export/`: `Options` gains a unit (whole project or current document) and typography
-  settings; the writers already share one model, so only styles and page breaks change.
+### `kind.toml`
+
+The TOML is not just a name and a description; it replaces what is hard-coded today
+(folder names, sidebar labels, the assistant's context files, actions, and prompts). Every
+table uses `#[serde(default)]`, so a kind written for an older version keeps loading.
+
+```toml
+name = "Novel"
+description = "Chapters, character sheets, and the rules of your world"
+# A project with any of these (relative paths; a trailing / means a folder) is this kind.
+detect = ["chapters/", "characters/", "world-rules.md"]
+# File opened after New Project creates the folder.
+first_file = "chapters/001-opening.md"
+
+[documents]                      # the main documents: counted, searched, exported in order
+folder = "chapters"
+label = "Chapters"
+singular = "chapter"             # "New chapter", "3 chapters"
+new_name = "chapter-{n}"         # new files are NNN-chapter-N.md, after the highest number
+new_title = "Chapter {n}"
+
+[sheets]                         # entity sheets: characters, parties, ...
+folder = "characters"
+label = "Characters"
+singular = "character"
+new_name = "new-character"       # new-character.md, new-character-2.md, ...
+new_title = "New character"
+template = "characters/example-character.md"   # body reused for new sheets
+
+[assistant]
+role = "helping an author with a work of fiction"
+guide = "AGENT.md"               # sent with every request, with its own instructions
+
+[[assistant.context]]            # other files sent with every request
+file = "world-rules.md"
+heading = "World rules"
+limit = 24000
+
+[[assistant.actions]]
+label = "Continue the scene"
+result = "insert"                # replace (needs a selection) | insert | notes
+task = "Continue the story from the cursor position..."
+output = "Reply with only the new text to insert at the cursor..."
+```
+
+**Ask** (the free-form request) stays built in for every kind.
+
+### How Quillwright knows the kind of a project
+
+The ground rules forbid a manifest or hidden metadata in the project, so the kind is
+inferred from the visible files: the first kind whose `detect` list matches wins, and a
+folder that matches nothing is treated as a Novel (today's behavior). This needs no extra
+file and survives copying the folder. If inference turns out to be wrong in practice, an
+override remembered in the app config by project path (**Project → Project Kind...**) can be
+added later.
+
+### Code
+
+- `src/kinds.rs`: `Kind` (deserialized from `kind.toml`), its template files, `builtin()`,
+  and `detect(root)`. The built-in files are embedded with `include_str!`.
+- `manuscript::Index::build(root, kind)` reads the kind's documents and sheets folders
+  instead of the constants `CHAPTERS_DIR` and `CHARACTERS_DIR`; `new_document` and
+  `new_sheet` take their names and titles from the kind.
+- `project::create(path, kind)` copies the kind's template.
+- `workspace.rs`: sidebar sections, the File menu, and counts use the kind's labels.
+- `assistant.rs`: `Context::gather` reads the kind's guide and context files, and the
+  writing actions (label, task, output format, result kind) come from the kind.
+- Export defaults (unit of export, page size, typography) stay in code until the Legal kind
+  needs them. Also still novel-specific: export looks for images in `chapters/`, the
+  keyboard shortcut list says "New chapter", and the home screen tagline speaks of stories.
+- New template files must also be listed in `kinds::BUILTIN` (they are embedded with
+  `include_str!`); a test checks that the embedded copies match the files on disk.
 
 Keep the Novel kind behaving exactly as today. The existing tests are the safety net, and
-each new kind should come with tests for its index and prompts.
+the prompts built from `kind.toml` must be identical to the ones built before the change.
 
 ## Suggested phases
 
-1. **Prototype without code:** write a legal case template by hand (folders, `AGENT.md`,
-   `facts.md`) and let a lawyer use the current app for one or two weeks. Note which labels
-   and actions they miss.
-2. **Import from Word** (useful for every kind).
-3. **`ProjectKind` refactor** with Novel as the only kind; no visible change.
-4. **Legal case kind:** template, labels, context files, assistant actions, per-document
-   export.
-5. **Confidentiality controls** for the assistant.
-6. Other kinds, if there is demand.
+1. **The Novel kind as data.** Move the template to `assets/kinds/novel/`, describe it in
+   `kind.toml`, and read folders, labels, context files, actions, and prompts from it. No
+   visible change. **Done.**
+2. **Prototype the Legal kind without code:** a hand-written template (folders, `AGENT.md`,
+   `facts.md`) that a lawyer uses with the app for one or two weeks, noting which labels and
+   actions they miss.
+3. **Legal kind:** its `kind.toml` and template, a kind choice in New Project, and export
+   defaults per kind (one document at a time, A4, no title page).
+4. **User kinds** from the data folder.
+5. **Import from Word** (useful for every kind).
+6. **Confidentiality controls** for the assistant.
+7. Other kinds, if there is demand.
 
 ## Other kinds to consider later
 
@@ -187,6 +259,9 @@ each new kind should come with tests for its index and prompts.
 
 ## Open questions
 
+- Language: the project template rules say English, but a kind for Brazilian lawyers would
+  read better with Portuguese file names and text (`fatos.md`, `pecas/`). Options: a
+  `template.pt-BR/` next to `template/`, or regional kinds as an explicit exception.
 - Should the legal kind use its own vocabulary or neutral words ("Documents", "People",
   "Facts") that also suit other kinds?
 - Where do exhibits live, and how are they cited from documents (for example

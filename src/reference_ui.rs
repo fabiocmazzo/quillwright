@@ -175,7 +175,7 @@ impl MarkdownApp {
     }
 
     pub(crate) fn in_project_for_research(&self) -> bool {
-        self.index.has_chapters_dir || self.index.has_research_dir
+        self.index.has_documents_dir || self.index.has_research_dir
     }
 
     pub(crate) fn add_research_files(&mut self) {

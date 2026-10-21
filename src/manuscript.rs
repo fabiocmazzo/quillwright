@@ -1,5 +1,8 @@
-//! Writer-facing view of a project folder: chapters, characters, notes, word counts.
-//! Everything is derived from plain Markdown files; nothing is stored.
+//! Writer-facing view of a project folder: the main documents (chapters), sheets
+//! (characters), notes, word counts. Which folders these are comes from the project's
+//! kind (`crate::kinds`). Everything is derived from plain Markdown files; nothing is
+//! stored.
+use crate::kinds::{Kind, Section};
 use std::{
     cmp::Ordering,
     fs,
@@ -7,8 +10,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// Where export looks for images, besides the project folder. The Novel kind's documents
+/// folder; export does not read the kind yet.
 pub const CHAPTERS_DIR: &str = "chapters";
-pub const CHARACTERS_DIR: &str = "characters";
 /// Reference material: PDFs, images, clippings. Read only in the app.
 pub const RESEARCH_DIR: &str = "research";
 
@@ -101,39 +105,41 @@ pub struct Entry {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Index {
-    pub chapters: Vec<Entry>,
-    pub characters: Vec<Entry>,
+    /// The kind's main documents (a novel's chapters), in reading order.
+    pub documents: Vec<Entry>,
+    /// The kind's sheets (a novel's characters).
+    pub sheets: Vec<Entry>,
     /// Markdown files at the project root (world rules, outlines, AGENT.md, ...).
     pub notes: Vec<Entry>,
     /// Every file under `research/`, sorted by path (hidden files skipped).
     pub research: Vec<PathBuf>,
-    pub has_chapters_dir: bool,
-    pub has_characters_dir: bool,
+    pub has_documents_dir: bool,
+    pub has_sheets_dir: bool,
     pub has_research_dir: bool,
 }
 
 impl Index {
-    pub fn build(root: &Path) -> Self {
-        let chapters_dir = root.join(CHAPTERS_DIR);
-        let characters_dir = root.join(CHARACTERS_DIR);
+    pub fn build(root: &Path, kind: &Kind) -> Self {
+        let documents_dir = root.join(&kind.documents.folder);
+        let sheets_dir = root.join(&kind.sheets.folder);
         let research_dir = root.join(RESEARCH_DIR);
         let mut research = Vec::new();
         collect_files(&research_dir, 0, &mut research);
         research.sort_by(|a, b| natural_path_cmp(a, b));
         Index {
-            chapters: entries(&chapters_dir),
-            characters: entries(&characters_dir),
+            documents: entries(&documents_dir),
+            sheets: entries(&sheets_dir),
             notes: entries(root),
-            has_chapters_dir: chapters_dir.is_dir(),
-            has_characters_dir: characters_dir.is_dir(),
+            has_documents_dir: documents_dir.is_dir(),
+            has_sheets_dir: sheets_dir.is_dir(),
             research,
             has_research_dir: research_dir.is_dir(),
         }
     }
 
-    /// Words across all chapters, using `live` text for the open file if given.
+    /// Words across all documents, using `live` text for the open file if given.
     pub fn manuscript_words(&self, open: Option<(&Path, usize)>) -> usize {
-        self.chapters
+        self.documents
             .iter()
             .map(|e| match open {
                 Some((path, words)) if path == e.path => words,
@@ -310,9 +316,10 @@ fn create_file(path: &Path, content: &str) -> io::Result<PathBuf> {
     Ok(path.to_owned())
 }
 
-/// Create `chapters/NNN-chapter-N.md` after the highest existing number.
-pub fn new_chapter(root: &Path) -> io::Result<PathBuf> {
-    let dir = root.join(CHAPTERS_DIR);
+/// Create a numbered document (`chapters/NNN-chapter-N.md` for a novel) after the highest
+/// existing number.
+pub fn new_document(root: &Path, section: &Section) -> io::Result<PathBuf> {
+    let dir = root.join(&section.folder);
     fs::create_dir_all(&dir)?;
     let mut highest = 0;
     let mut width = 3;
@@ -326,19 +333,27 @@ pub fn new_chapter(root: &Path) -> io::Result<PathBuf> {
     }
     let mut n = highest + 1;
     loop {
-        let path = dir.join(format!("{n:0width$}-chapter-{n}.md"));
-        match create_file(&path, &format!("# Chapter {n}\n\n")) {
+        let name = section.new_name.replace("{n}", &n.to_string());
+        let title = section.new_title.replace("{n}", &n.to_string());
+        let path = dir.join(format!("{n:0width$}-{name}.md"));
+        match create_file(&path, &format!("# {title}\n\n")) {
             Err(err) if err.kind() == io::ErrorKind::AlreadyExists => n += 1,
             result => return result,
         }
     }
 }
 
-/// Create `characters/new-character[-N].md` from the character sheet template.
-pub fn new_character(root: &Path) -> io::Result<PathBuf> {
-    let dir = root.join(CHARACTERS_DIR);
+/// Create a sheet (`characters/new-character[-N].md` for a novel) from the kind's sheet
+/// template.
+pub fn new_sheet(root: &Path, kind: &Kind) -> io::Result<PathBuf> {
+    let section = &kind.sheets;
+    let dir = root.join(&section.folder);
     fs::create_dir_all(&dir)?;
-    let template = include_str!("../assets/project-template/example-character.md");
+    let template = section
+        .template
+        .as_deref()
+        .and_then(|path| kind.file(path))
+        .unwrap_or_default();
     let body = template
         .split_once('\n')
         .map_or("", |(_, rest)| rest)
@@ -347,12 +362,12 @@ pub fn new_character(root: &Path) -> io::Result<PathBuf> {
         .split_once("\n\n")
         .filter(|(first, _)| first.starts_with('>') || first.trim().is_empty())
         .map_or(body, |(_, rest)| rest);
-    let content = format!("# New character\n\n{body}");
+    let content = format!("# {}\n\n{body}", section.new_title);
     for n in 1.. {
         let name = if n == 1 {
-            "new-character.md".to_string()
+            format!("{}.md", section.new_name)
         } else {
-            format!("new-character-{n}.md")
+            format!("{}-{n}.md", section.new_name)
         };
         match create_file(&dir.join(name), &content) {
             Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
@@ -419,7 +434,7 @@ mod tests {
         fs::write(root.join("research/notes.txt"), "x").unwrap();
         fs::write(root.join("research/maps/harbor.png"), "x").unwrap();
         fs::write(root.join("research/.DS_Store"), "x").unwrap();
-        let index = Index::build(root);
+        let index = Index::build(root, crate::kinds::default_kind());
         assert!(index.has_research_dir);
         let names: Vec<_> = index
             .research
@@ -430,7 +445,9 @@ mod tests {
             names,
             vec![PathBuf::from("maps/harbor.png"), PathBuf::from("notes.txt")]
         );
-        assert!(!Index::build(&root.join("research")).has_research_dir);
+        assert!(
+            !Index::build(&root.join("research"), crate::kinds::default_kind()).has_research_dir
+        );
     }
 
     #[test]
@@ -475,19 +492,19 @@ mod tests {
         fs::write(root.join("chapters/001-opening.md"), "# Opening\n\none two").unwrap();
         fs::write(root.join("chapters/notes.txt"), "ignored").unwrap();
         fs::write(root.join("world-rules.md"), "# World rules").unwrap();
-        let chapter = new_chapter(root).unwrap();
+        let chapter = new_document(root, &crate::kinds::default_kind().documents).unwrap();
         assert!(chapter.ends_with("chapters/002-chapter-2.md"));
-        let character = new_character(root).unwrap();
-        let second = new_character(root).unwrap();
+        let character = new_sheet(root, crate::kinds::default_kind()).unwrap();
+        let second = new_sheet(root, crate::kinds::default_kind()).unwrap();
         assert!(second.ends_with("characters/new-character-2.md"));
         assert!(fs::read_to_string(&character)
             .unwrap()
             .starts_with("# New character\n\n## Identity"));
 
-        let index = Index::build(root);
-        let titles: Vec<_> = index.chapters.iter().map(|e| e.title.as_str()).collect();
+        let index = Index::build(root, crate::kinds::default_kind());
+        let titles: Vec<_> = index.documents.iter().map(|e| e.title.as_str()).collect();
         assert_eq!(titles, ["Opening", "Chapter 2"]);
-        assert_eq!(index.characters.len(), 2);
+        assert_eq!(index.sheets.len(), 2);
         assert_eq!(index.notes.len(), 1);
         assert_eq!(index.manuscript_words(None), 5);
         let open = root.join("chapters/001-opening.md");

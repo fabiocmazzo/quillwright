@@ -1,7 +1,7 @@
 # Quillwright: guide for coding agents
 
 This file is for agents (and people) working on Quillwright's **source code**. It is not
-the same as `assets/project-template/AGENT.md`, which is copied into each *writing project*
+the same as `assets/kinds/novel/template/AGENT.md`, which is copied into each *writing project*
 to guide agents that help with a book.
 
 Read this file first, then `README.md` (user-facing behavior) and `docs/RELEASING.md`
@@ -26,7 +26,7 @@ yet.
 ## Ground rules
 
 - **English only** in code, comments, UI text, docs, commit messages, and the project
-  template (`assets/project-template/`). The author's *manuscript* can be in any language.
+  templates (`assets/kinds/`). The author's *manuscript* can be in any language.
 - **Plain Markdown, no lock-in.** Never add a manifest, database, or hidden metadata to a
   writing project. Everything the app shows is derived from the files on disk.
 - **Never lose or silently overwrite the author's text.** Saves are atomic and refuse to
@@ -50,7 +50,7 @@ yet.
 ```bash
 cargo run                                # debug build
 cargo run --release -- path/to/file.md   # open a file directly
-cargo test                               # 92 unit tests, about 1 s
+cargo test                               # 95 unit tests, about 1 s
 cargo fmt && cargo clippy --all-targets --locked -- -D warnings
 packaging/linux/build.sh 0.4.0           # AppImage + .tar.gz in dist/ (after a release build)
 packaging/linux/install-local.sh         # install the release build, menu entry, and icon in ~/.local
@@ -77,8 +77,9 @@ XDG_CONFIG_HOME=/tmp/qw/cfg XDG_DATA_HOME=/tmp/qw/data cargo run -- /tmp/qw/book
 | `src/workspace.rs` | Menus, manuscript sidebar, status bar, home screen, the page, focus mode, keyboard shortcut list (`SHORTCUTS`) |
 | `src/editor.rs` | Custom editor: edits the Markdown *source* while displaying a styled *projection*; selection, undo, IME, navigation |
 | `src/live_preview.rs` | Builds the styled projection (hides syntax except on the active line) and maps display offsets to source offsets |
-| `src/manuscript.rs` | Project index: chapters, characters, notes, titles, word counts, outline, new chapter/character files |
-| `src/project.rs` | New Project scaffold from `assets/project-template/`; opening folders |
+| `src/kinds.rs` | Project kinds: `Kind` read from `assets/kinds/<id>/kind.toml` (folders, labels, assistant context files, actions, prompts), its embedded template, `detect` |
+| `src/manuscript.rs` | Project index: the kind's documents (chapters) and sheets (characters), notes, titles, word counts, outline, new document/sheet files |
+| `src/project.rs` | New Project: copies the kind's template; opening folders |
 | `src/file_sync.rs` | Background file watcher (`notify` plus polling), reconciliation of disk vs editor, atomic checked writes, cursor mapping |
 | `src/saving.rs` | Autosave, save-before-leaving, Version History window |
 | `src/history.rs` | Version history storage (timestamped copies, retention) |
@@ -103,7 +104,7 @@ XDG_CONFIG_HOME=/tmp/qw/cfg XDG_DATA_HOME=/tmp/qw/data cargo run -- /tmp/qw/book
 | `src/theme.rs` | Paper / Sepia / Night palettes and egui styling |
 | `src/fonts.rs` | Bundled fonts (Literata, Atkinson Hyperlegible) and system font fallback |
 | `src/process.rs` | `command()`: `std::process::Command` without a console window on Windows |
-| `assets/project-template/` | Files created by New Project (embedded with `include_str!`) |
+| `assets/kinds/<id>/` | A project kind: `kind.toml` and the `template/` copied by New Project (embedded with `include_str!`, listed in `kinds::BUILTIN`) |
 | `assets/fonts/`, `assets/icon/` | Embedded fonts and the app icon (SVG source plus generated PNG/ICO) |
 | `assets/dictionaries/` | The bundled en_US Hunspell dictionary (SCOWL, from LibreOffice) and its copyright notice |
 | `packaging/`, `.github/workflows/` | Release packaging scripts and CI / release workflows |
@@ -165,10 +166,24 @@ before a save replaces the file (at most every 10 minutes, or always for a cut o
 quarter), before an external reload replaces the text, and before a restore. The newest 50
 copies per file are kept.
 
+### Project kinds
+
+A project's kind (only Novel so far) says which folders hold the main documents and the
+sheets, how the UI names them, and what the assistant sends and offers. It lives in
+`assets/kinds/<id>/kind.toml`, never in the writing project: `kinds::detect` picks the first
+kind whose `detect` paths exist, else the first built-in kind (Novel). `MarkdownApp.kind` is
+set with each index rebuild. `manuscript::Index` has `documents` and `sheets` (a novel's
+chapters and characters). New template files must be added to `kinds::BUILTIN`; a test checks
+that the embedded copies match the files on disk. Still novel-specific in code: export
+(images in `chapters/`, the whole book), the shortcut list, and the home screen tagline.
+Design and next phases: `docs/project-kinds.md`.
+
 ### Assistant
 
 The prompt contains the chapter with `⟦CURSOR⟧` or `⟦SELECTION START⟧`/`⟦SELECTION END⟧`
-markers, `AGENT.md`, `world-rules.md`, and the sheets of characters named in the chapter. All
+markers, the kind's guide (`AGENT.md`) and context files (`world-rules.md`), and the sheets
+whose title is named in the chapter. The preamble, the writing actions (label, task, output
+format, result kind), and these notes come from `kind.toml`; only **Ask** is in code. All
 of it is truncated or windowed for size. `Job::run` streams stdout and stderr from any command
 and supports cancel; export reuses it. Replacing a selection re-finds the original passage if
 the buffer moved, and refuses when the passage is ambiguous.
@@ -305,8 +320,9 @@ logs. Poll gently.
 
 Roughly in priority order. Each one should keep the ground rules above.
 
-A longer-term idea, *project kinds* (Novel, Legal case, ...) sharing one core, is described in
-`docs/project-kinds.md`.
+*Project kinds* (Novel, Legal case, ...) sharing one core are described in
+`docs/project-kinds.md`. Phase 1 (Novel as `kind.toml`) is done; next is a hand-written
+Legal template tested by a lawyer, then the Legal kind with a kind choice in New Project.
 
 1. **Verify the 0.4.0 packages on real Windows and macOS machines.** Check the icon, the
    absence of a console window, file dialogs, the first-launch working folder (should be the

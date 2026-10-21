@@ -13,7 +13,7 @@ impl MarkdownApp {
         let language =
             spelling::resolve_language(&self.config.spelling.language, &self.working_dir);
         self.spelling.set_language(&language);
-        let names = self.index.characters.iter().flat_map(|entry| {
+        let names = self.index.sheets.iter().flat_map(|entry| {
             let stem = entry
                 .path
                 .file_stem()
@@ -105,7 +105,7 @@ impl MarkdownApp {
     /// `metadata.yaml` rather than in the app's settings.
     fn in_project(&self) -> bool {
         !crate::file_sync::is_broad(&self.working_dir)
-            && (self.index.has_chapters_dir || self.working_dir.join("metadata.yaml").is_file())
+            && (self.index.has_documents_dir || self.working_dir.join("metadata.yaml").is_file())
     }
 
     fn spelling_language_menu(&mut self, ui: &mut Ui) {

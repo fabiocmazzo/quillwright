@@ -68,7 +68,7 @@ impl MarkdownApp {
         };
         let index = &self.index;
         let mut sources = Vec::new();
-        for entry in &index.chapters {
+        for entry in &index.documents {
             sources.push(source(
                 &entry.path,
                 &entry.title,
@@ -76,7 +76,7 @@ impl MarkdownApp {
                 false,
             ));
         }
-        for entry in &index.characters {
+        for entry in &index.sheets {
             sources.push(source(
                 &entry.path,
                 &entry.title,

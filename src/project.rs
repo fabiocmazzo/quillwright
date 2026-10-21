@@ -1,29 +1,12 @@
-//! A project is an ordinary folder. Templates are optional Markdown conventions.
+//! A project is an ordinary folder. Templates are optional Markdown conventions, one per
+//! project kind (`crate::kinds`).
 use std::{
     fs,
     io::{self, Write},
     path::{Path, PathBuf},
 };
 
-pub const FIRST_CHAPTER: &str = "chapters/001-opening.md";
-const FILES: [(&str, &str); 4] = [
-    (
-        "AGENT.md",
-        include_str!("../assets/project-template/AGENT.md"),
-    ),
-    (
-        "world-rules.md",
-        include_str!("../assets/project-template/world-rules.md"),
-    ),
-    (
-        "characters/example-character.md",
-        include_str!("../assets/project-template/example-character.md"),
-    ),
-    (
-        FIRST_CHAPTER,
-        include_str!("../assets/project-template/001-opening.md"),
-    ),
-];
+use crate::kinds::Kind;
 
 pub struct NewProject {
     pub name: String,
@@ -64,18 +47,29 @@ pub fn open(path: &Path) -> io::Result<PathBuf> {
     Ok(path)
 }
 
-/// Create only a new directory; never merge into or overwrite an existing project.
-pub fn create(path: &Path) -> io::Result<PathBuf> {
+/// Create only a new directory with the kind's template; never merge into or overwrite
+/// an existing project.
+pub fn create(path: &Path, kind: &Kind) -> io::Result<PathBuf> {
     fs::create_dir(path)?;
     let mut files = Vec::new();
     let mut dirs = Vec::new();
     let result = (|| {
-        for name in ["chapters", "characters"] {
+        let folders = [&kind.documents.folder, &kind.sheets.folder];
+        let parents = kind.files.iter().filter_map(|(name, _)| {
+            Path::new(name)
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .and_then(Path::to_str)
+        });
+        for name in folders.into_iter().map(String::as_str).chain(parents) {
             let dir = path.join(name);
-            fs::create_dir(&dir)?;
+            if name.is_empty() || dir.is_dir() {
+                continue;
+            }
+            fs::create_dir_all(&dir)?;
             dirs.push(dir);
         }
-        for (name, content) in FILES {
+        for (name, content) in &kind.files {
             let file = path.join(name);
             let mut handle = fs::OpenOptions::new()
                 .write(true)
@@ -103,16 +97,22 @@ pub fn create(path: &Path) -> io::Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kinds;
+
+    const FIRST_CHAPTER: &str = "chapters/001-opening.md";
 
     #[test]
     fn creates_only_the_recommended_markdown_scaffold() {
         let temp = tempfile::tempdir().unwrap();
         let path = destination(temp.path(), "My novel").unwrap();
-        let root = create(&path).unwrap();
+        let novel = kinds::default_kind();
+        let root = create(&path, novel).unwrap();
         assert!(root.join("chapters").is_dir());
         assert!(root.join("characters").is_dir());
-        for (name, content) in FILES {
-            assert_eq!(fs::read_to_string(root.join(name)).unwrap(), content);
+        assert_eq!(novel.first_file, FIRST_CHAPTER);
+        assert_eq!(novel.files.len(), 4);
+        for (name, content) in &novel.files {
+            assert_eq!(&fs::read_to_string(root.join(name)).unwrap(), content);
         }
         assert_eq!(fs::read_dir(root).unwrap().count(), 4);
     }
@@ -120,10 +120,11 @@ mod tests {
     #[test]
     fn existing_projects_and_files_are_never_overwritten() {
         let temp = tempfile::tempdir().unwrap();
-        let root = create(&temp.path().join("book")).unwrap();
+        let novel = kinds::default_kind();
+        let root = create(&temp.path().join("book"), novel).unwrap();
         fs::write(root.join(FIRST_CHAPTER), "author edits").unwrap();
         assert_eq!(
-            create(&root).unwrap_err().kind(),
+            create(&root, novel).unwrap_err().kind(),
             io::ErrorKind::AlreadyExists
         );
         assert_eq!(
@@ -132,7 +133,7 @@ mod tests {
         );
         let file = temp.path().join("file");
         fs::write(&file, "keep").unwrap();
-        assert!(create(&file).is_err());
+        assert!(create(&file, novel).is_err());
         assert_eq!(fs::read_to_string(file).unwrap(), "keep");
     }
 

@@ -77,7 +77,7 @@ impl MarkdownApp {
             return;
         }
         let p = theme::current(ctx);
-        let chapters = self.index.chapters.len();
+        let chapters = self.index.documents.len();
         let open_words = self
             .file_path
             .as_deref()
@@ -260,7 +260,7 @@ impl MarkdownApp {
         // The open chapter is exported as it is in the editor, saved or not.
         let sources: Vec<export::Source> = self
             .index
-            .chapters
+            .documents
             .iter()
             .map(|entry| export::Source {
                 title: entry.title.clone(),

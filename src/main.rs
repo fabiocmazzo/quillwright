@@ -12,6 +12,7 @@ mod export_ui;
 mod file_sync;
 mod fonts;
 mod history;
+mod kinds;
 mod live_preview;
 mod manuscript;
 mod pdf_view;
@@ -134,6 +135,8 @@ struct MarkdownApp {
     window_focused: bool,
     // Writing workspace state.
     index: manuscript::Index,
+    /// The project's kind (novel, ...), inferred from its files with the index.
+    kind: &'static kinds::Kind,
     index_dirty: bool,
     show_home: bool,
     focus_mode: bool,
@@ -345,6 +348,7 @@ impl Default for MarkdownApp {
             sync_notice: None,
             window_focused: true,
             index: manuscript::Index::default(),
+            kind: kinds::default_kind(),
             index_dirty: true,
             show_home: true,
             focus_mode: false,
@@ -511,7 +515,8 @@ impl eframe::App for MarkdownApp {
 
         self.run_pending_actions();
         if self.index_dirty {
-            self.index = manuscript::Index::build(&self.working_dir);
+            self.kind = kinds::detect(&self.working_dir);
+            self.index = manuscript::Index::build(&self.working_dir, self.kind);
             self.index_dirty = false;
             self.refresh_spelling();
             self.refresh_reference();
@@ -952,7 +957,7 @@ impl MarkdownApp {
                         dialog.error = None;
                     }
                 }
-                ui.label("Creates chapters/, characters/, world-rules.md and AGENT.md.");
+                ui.label(kinds::default_kind().new_project_note.as_str());
                 ui.label("Templates are optional. Existing folders will not be overwritten.");
                 if let Some(error) = &dialog.error {
                     ui.colored_label(ui.visuals().error_fg_color, error);
@@ -1803,21 +1808,23 @@ impl MarkdownApp {
             DiscardAction::OpenPath(path) => {
                 self.open_file_from_path(&path);
             }
-            DiscardAction::CreateProject(path) => match project::create(&path) {
-                Ok(root) => {
-                    self.activate_project(root.clone());
-                    self.open_file_from_path(&root.join(project::FIRST_CHAPTER));
-                    self.new_project = None;
-                }
-                Err(err) => {
-                    let message = format!("Could not create project {}: {err}", path.display());
-                    if let Some(dialog) = &mut self.new_project {
-                        dialog.error = Some(message);
-                    } else {
-                        self.show_tool_message(message);
+            DiscardAction::CreateProject(path) => {
+                match project::create(&path, kinds::default_kind()) {
+                    Ok(root) => {
+                        self.activate_project(root.clone());
+                        self.open_file_from_path(&root.join(&kinds::default_kind().first_file));
+                        self.new_project = None;
+                    }
+                    Err(err) => {
+                        let message = format!("Could not create project {}: {err}", path.display());
+                        if let Some(dialog) = &mut self.new_project {
+                            dialog.error = Some(message);
+                        } else {
+                            self.show_tool_message(message);
+                        }
                     }
                 }
-            },
+            }
             DiscardAction::OpenProject(path) => match project::open(&path) {
                 Ok(root) => self.activate_project(root),
                 Err(err) => self

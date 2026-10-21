@@ -160,13 +160,14 @@ impl MarkdownApp {
     fn run_request(&mut self, ctx: &Context, request: assistant::Request, command: &[String]) {
         let characters: Vec<_> = self
             .index
-            .characters
+            .sheets
             .iter()
             .map(|e| (e.path.clone(), e.title.clone()))
             .collect();
-        let mut context = assistant::Context::gather(&self.working_dir, &self.content, &characters);
+        let mut context =
+            assistant::Context::gather(&self.working_dir, self.kind, &self.content, &characters);
         context.clips = self.assistant.clips.clone();
-        let prompt = assistant::build_prompt(&request, &self.content, &context);
+        let prompt = assistant::build_prompt(&request, &self.content, &context, self.kind);
         let state = &mut self.assistant;
         state.open = true;
         state.result = None;
@@ -315,7 +316,11 @@ impl MarkdownApp {
         action: &mut Option<PanelAction>,
     ) {
         if self.file_path.is_none() && self.content.trim().is_empty() {
-            muted(ui, "Open a chapter to work with the assistant.", p);
+            let open = format!(
+                "Open a {} to work with the assistant.",
+                self.kind.documents.singular
+            );
+            muted(ui, &open, p);
             return;
         }
         let has_selection = self.selection_start != self.selection_end;
@@ -336,38 +341,26 @@ impl MarkdownApp {
 
         let running = self.assistant.running();
         ui.columns(2, |cols| {
-            let actions = [
-                (0, Action::Rewrite, "Rewrite the selected passage"),
-                (1, Action::Continue, "Write what comes next at the cursor"),
-                (
-                    0,
-                    Action::Alternatives,
-                    "Three different versions of the selection",
-                ),
-                (
-                    1,
-                    Action::Continuity,
-                    "Review this chapter against the canon",
-                ),
-            ];
-            for (col, act, tip) in actions {
-                let enabled = !running && (!act.needs_selection() || has_selection);
-                let tip = if act.needs_selection() && !has_selection {
+            // Two per row, in the kind's order.
+            for (i, act) in self.kind.assistant.actions.iter().enumerate() {
+                let enabled = !running && (!act.needs_selection || has_selection);
+                let tip = if act.needs_selection && !has_selection {
                     "Select a passage first"
                 } else {
-                    tip
+                    act.hint.as_str()
                 };
-                let ui = &mut cols[col];
+                let ui = &mut cols[i % 2];
                 if ui
                     .add_enabled(
                         enabled,
-                        Button::new(act.label()).min_size(egui::vec2(ui.available_width(), 30.0)),
+                        Button::new(act.label.as_str())
+                            .min_size(egui::vec2(ui.available_width(), 30.0)),
                     )
                     .on_hover_text(tip)
                     .on_disabled_hover_text(tip)
                     .clicked()
                 {
-                    *action = Some(PanelAction::Send(act));
+                    *action = Some(PanelAction::Send(Action::Kind(act.clone())));
                 }
             }
         });
@@ -407,20 +400,25 @@ impl MarkdownApp {
         let summary = {
             let characters: Vec<_> = self
                 .index
-                .characters
+                .sheets
                 .iter()
                 .map(|e| (e.path.clone(), e.title.clone()))
                 .collect();
             // Cheap enough: a few small files, and only while the panel is open.
-            let mut context =
-                assistant::Context::gather(&self.working_dir, &self.content, &characters);
+            let mut context = assistant::Context::gather(
+                &self.working_dir,
+                self.kind,
+                &self.content,
+                &characters,
+            );
             context.clips = self.assistant.clips.clone();
             context.summary()
         };
+        let document = &self.kind.documents.singular;
         let sends = if summary.is_empty() {
-            "this chapter".to_string()
+            format!("this {document}")
         } else {
-            format!("this chapter, {summary}")
+            format!("this {document}, {summary}")
         };
         ui.label(
             RichText::new(format!("Sends {sends} to `{tool}`."))

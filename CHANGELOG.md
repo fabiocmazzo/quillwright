@@ -23,6 +23,9 @@ All notable changes to Quillwright are listed here. Versions follow
 - **Research as assistant context.** Select a passage in the Reference panel (text,
   Markdown, or a PDF page, by dragging) and choose **Use as Context**: it goes to the
   assistant with its citation (`research/book.pdf, p. 42`) until you remove it.
+- Internal: the novel layout (folders, sidebar labels, the assistant's context files,
+  actions, and prompts) is now described in `assets/kinds/novel/kind.toml`, the first
+  *project kind*. Nothing changes for novels; this prepares other kinds of writing.
 - The sidebar sorts names naturally: `note-2` comes before `note-10`, and chapters
   numbered without leading zeros (`1-`, `2-`, `10-`) are in reading order.
 - The sidebar's scroll bar no longer covers the **+** buttons.

@@ -86,11 +86,12 @@ impl MarkdownApp {
     }
 
     fn file_menu(&mut self, ui: &mut Ui) {
-        if ui.button("New Chapter\tCtrl+Shift+N").clicked() {
+        let documents = format!("{}\tCtrl+Shift+N", self.kind.documents.new_menu_label());
+        if ui.button(documents).clicked() {
             self.create_chapter();
             ui.close();
         }
-        if ui.button("New Character").clicked() {
+        if ui.button(self.kind.sheets.new_menu_label()).clicked() {
             self.create_character();
             ui.close();
         }
@@ -173,18 +174,14 @@ impl MarkdownApp {
         ui.separator();
         let has_selection = self.selection_start != self.selection_end;
         let running = self.assistant.running();
-        for action in [
-            crate::assistant::Action::Rewrite,
-            crate::assistant::Action::Continue,
-            crate::assistant::Action::Alternatives,
-            crate::assistant::Action::Continuity,
-        ] {
-            let enabled = !running && (!action.needs_selection() || has_selection);
+        for action in &self.kind.assistant.actions {
+            let enabled = !running && (!action.needs_selection || has_selection);
             if ui
-                .add_enabled(enabled, Button::new(action.label()))
+                .add_enabled(enabled, Button::new(action.label.as_str()))
                 .clicked()
             {
                 let ctx = ui.ctx().clone();
+                let action = crate::assistant::Action::Kind(action.clone());
                 self.send_assistant(&ctx, action);
                 ui.close();
             }
@@ -286,7 +283,7 @@ impl MarkdownApp {
             parent: self
                 .working_dir
                 .parent()
-                .filter(|_| self.index.has_chapters_dir)
+                .filter(|_| self.index.has_documents_dir)
                 .map(Path::to_path_buf)
                 .unwrap_or_else(|| self.working_dir.clone()),
             error: None,
@@ -322,22 +319,28 @@ impl MarkdownApp {
     // ----- New files -------------------------------------------------------
 
     pub(crate) fn create_chapter(&mut self) {
-        match manuscript::new_chapter(&self.working_dir) {
+        let section = &self.kind.documents;
+        match manuscript::new_document(&self.working_dir, section) {
             Ok(path) => {
                 self.index_dirty = true;
                 self.run_or_prompt_discard(DiscardAction::OpenPath(path));
             }
-            Err(err) => self.show_tool_message(format!("Could not create chapter: {err}")),
+            Err(err) => {
+                self.show_tool_message(format!("Could not create {}: {err}", section.singular))
+            }
         }
     }
 
     pub(crate) fn create_character(&mut self) {
-        match manuscript::new_character(&self.working_dir) {
+        match manuscript::new_sheet(&self.working_dir, self.kind) {
             Ok(path) => {
                 self.index_dirty = true;
                 self.run_or_prompt_discard(DiscardAction::OpenPath(path));
             }
-            Err(err) => self.show_tool_message(format!("Could not create character: {err}")),
+            Err(err) => self.show_tool_message(format!(
+                "Could not create {}: {err}",
+                self.kind.sheets.singular
+            )),
         }
     }
 
@@ -347,6 +350,7 @@ impl MarkdownApp {
         let ctx = &root.ctx().clone();
         let p = theme::current(ctx);
         let index = self.index.clone();
+        let kind = self.kind;
         let current = self.file_path.clone();
         let open_words = current.as_deref().map(|path| (path, self.current_words));
         let total = index.manuscript_words(open_words);
@@ -392,14 +396,12 @@ impl MarkdownApp {
                         }
                     });
                 });
-                if index.has_chapters_dir {
-                    let chapters = index.chapters.len();
+                if index.has_documents_dir {
                     ui.label(
                         RichText::new(format!(
-                            "{} words · {} chapter{}",
+                            "{} words · {}",
                             manuscript::group(total),
-                            chapters,
-                            if chapters == 1 { "" } else { "s" }
+                            kind.documents.count(index.documents.len())
                         ))
                         .size(12.0)
                         .color(p.muted),
@@ -419,14 +421,16 @@ impl MarkdownApp {
                             search_action = self.search_results(ui, &p);
                             return;
                         }
-                        if index.has_chapters_dir {
-                            if section(ui, "Chapters", Some("New chapter"), &p) {
+                        if index.has_documents_dir {
+                            let documents = &kind.documents;
+                            let new = documents.new_label();
+                            if section(ui, &documents.label, Some(&new), &p) {
                                 action = Some(NavAction::NewChapter);
                             }
-                            if index.chapters.is_empty() {
-                                hint(ui, "No chapters yet — press + to start one.", &p);
+                            if index.documents.is_empty() {
+                                hint(ui, &documents.empty_hint, &p);
                             }
-                            for (i, entry) in index.chapters.iter().enumerate() {
+                            for (i, entry) in index.documents.iter().enumerate() {
                                 let selected = current.as_ref() == Some(&entry.path);
                                 let words = open_words
                                     .filter(|(path, _)| *path == entry.path)
@@ -457,11 +461,12 @@ impl MarkdownApp {
                             }
                         }
 
-                        if index.has_characters_dir {
-                            if section(ui, "Characters", Some("New character"), &p) {
+                        if index.has_sheets_dir {
+                            let new = kind.sheets.new_label();
+                            if section(ui, &kind.sheets.label, Some(&new), &p) {
                                 action = Some(NavAction::NewCharacter);
                             }
-                            for entry in &index.characters {
+                            for entry in &index.sheets {
                                 let selected = current.as_ref() == Some(&entry.path);
                                 if nav_row(ui, selected, 0.0, &entry.title, None, &p)
                                     .on_hover_text(file_label(&entry.path))
@@ -512,7 +517,7 @@ impl MarkdownApp {
                         }
 
                         ui.add_space(10.0);
-                        let structured = index.has_chapters_dir || index.has_characters_dir;
+                        let structured = index.has_documents_dir || index.has_sheets_dir;
                         egui::CollapsingHeader::new(
                             RichText::new("ALL FILES")
                                 .size(11.0)
@@ -573,7 +578,7 @@ impl MarkdownApp {
         let is_chapter = self
             .file_path
             .as_ref()
-            .is_some_and(|path| self.index.chapters.iter().any(|e| &e.path == path));
+            .is_some_and(|path| self.index.documents.iter().any(|e| &e.path == path));
         let selected_words = (self.selection_start != self.selection_end)
             .then(|| self.selected_text())
             .flatten()
@@ -640,14 +645,18 @@ impl MarkdownApp {
                             "{sign}{} this session",
                             manuscript::group(session.unsigned_abs() as usize)
                         )];
-                        if self.index.has_chapters_dir {
+                        if self.index.has_documents_dir {
                             parts.push(format!("{} in manuscript", manuscript::group(total)));
                         }
                         if !self.show_home || self.file_path.is_some() {
                             parts.push(format!(
                                 "{} words{} · {} min read",
                                 manuscript::group(self.current_words),
-                                if is_chapter { " in chapter" } else { "" },
+                                if is_chapter {
+                                    format!(" in {}", self.kind.documents.singular)
+                                } else {
+                                    String::new()
+                                },
                                 manuscript::reading_minutes(self.current_words)
                             ));
                             if let Some(words) = selected_words {
@@ -676,6 +685,7 @@ impl MarkdownApp {
     pub(crate) fn show_home_screen(&mut self, ui: &mut Ui) {
         let p = theme::current(ui.ctx());
         let index = self.index.clone();
+        let kind = self.kind;
         let screen_height = ui.ctx().content_rect().height();
         let mut action = None;
         egui::ScrollArea::vertical()
@@ -702,7 +712,7 @@ impl MarkdownApp {
                         });
                         ui.add_space(32.0);
 
-                        let has_project = index.has_chapters_dir || index.has_characters_dir;
+                        let has_project = index.has_documents_dir || index.has_sheets_dir;
                         if has_project {
                             card(ui, &p, |ui| {
                                 ui.label(
@@ -715,23 +725,26 @@ impl MarkdownApp {
                                 );
                                 ui.label(
                                     RichText::new(format!(
-                                        "{} words · {} chapters · {} characters",
+                                        "{} words · {} {} · {} {}",
                                         manuscript::group(index.manuscript_words(None)),
-                                        index.chapters.len(),
-                                        index.characters.len()
+                                        index.documents.len(),
+                                        kind.documents.plural,
+                                        index.sheets.len(),
+                                        kind.sheets.plural
                                     ))
                                     .size(13.0)
                                     .color(p.muted),
                                 );
                                 ui.add_space(14.0);
-                                let (label, target) = match index.chapters.last() {
+                                let (label, target) = match index.documents.last() {
                                     Some(last) => (
                                         format!("Continue writing  “{}”", last.title),
                                         Some(NavAction::Open(last.path.clone())),
                                     ),
-                                    None => {
-                                        ("Write the first chapter".into(), Some(NavAction::NewChapter))
-                                    }
+                                    None => (
+                                        kind.documents.first_action.clone(),
+                                        Some(NavAction::NewChapter),
+                                    ),
                                 };
                                 if ui
                                     .add_sized(
