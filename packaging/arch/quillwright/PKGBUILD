@@ -1,0 +1,47 @@
+# Maintainer: Fabio Covolo Mazzo <fabiomazzo at gmail dot com>
+pkgname=quillwright
+pkgver=0.4.0
+pkgrel=1
+pkgdesc='Writing environment for novels and long-form fiction in plain Markdown, designed to run alongside AI agents'
+arch=('x86_64' 'aarch64')
+url='https://github.com/fabiocmazzo/quillwright'
+license=('MIT')
+depends=('gtk3' 'libxkbcommon' 'wayland' 'libx11' 'libxcursor' 'libxrandr' 'libxi'
+         'fontconfig' 'freetype2' 'libglvnd' 'gcc-libs' 'glibc')
+makedepends=('cargo')
+optdepends=('hunspell-en_us: more English spelling dictionaries'
+            'hunspell-es_any: Spanish spelling dictionary (other hunspell-* packages work too)'
+            'claude-code: assistant backend'
+            'ollama: local assistant backend')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('da0d4d8ef70c4b85bec23dc45116a0406a167365b0fe486ab7b65ce265735107')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$srcdir=/build"
+  cargo build --frozen --release
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo test --frozen --release
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 target/release/quillwright -t "$pkgdir/usr/bin"
+  install -Dm644 packaging/linux/quillwright.desktop -t "$pkgdir/usr/share/applications"
+  install -Dm644 assets/icon/quillwright.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/quillwright.png"
+  install -Dm644 assets/icon/quillwright.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/quillwright.svg"
+  install -Dm644 LICENSE -t "$pkgdir/usr/share/licenses/$pkgname"
+  install -Dm644 README.md -t "$pkgdir/usr/share/doc/$pkgname"
+}

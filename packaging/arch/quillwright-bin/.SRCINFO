@@ -1,0 +1,31 @@
+pkgbase = quillwright-bin
+	pkgdesc = Writing environment for novels and long-form fiction in plain Markdown, designed to run alongside AI agents (prebuilt)
+	pkgver = 0.4.0
+	pkgrel = 1
+	url = https://github.com/fabiocmazzo/quillwright
+	arch = x86_64
+	license = MIT
+	depends = gtk3
+	depends = libxkbcommon
+	depends = wayland
+	depends = libx11
+	depends = libxcursor
+	depends = libxrandr
+	depends = libxi
+	depends = fontconfig
+	depends = freetype2
+	depends = libglvnd
+	depends = gcc-libs
+	depends = glibc
+	optdepends = hunspell-en_us: more English spelling dictionaries
+	optdepends = hunspell-es_any: Spanish spelling dictionary (other hunspell-* packages work too)
+	optdepends = claude-code: assistant backend
+	optdepends = ollama: local assistant backend
+	provides = quillwright=0.4.0
+	conflicts = quillwright
+	options = !strip
+	options = !debug
+	source = https://github.com/fabiocmazzo/quillwright/releases/download/v0.4.0/quillwright-0.4.0-linux-x86_64.tar.gz
+	sha256sums = 284c417f3d2bf71384a785def015139e2fb2c2ecbd0baffabea392707d3e49a3
+
+pkgname = quillwright-bin

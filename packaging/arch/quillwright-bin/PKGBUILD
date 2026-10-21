@@ -1,0 +1,29 @@
+# Maintainer: Fabio Covolo Mazzo <fabiomazzo at gmail dot com>
+pkgname=quillwright-bin
+_pkgname=quillwright
+pkgver=0.4.0
+pkgrel=1
+pkgdesc='Writing environment for novels and long-form fiction in plain Markdown, designed to run alongside AI agents (prebuilt)'
+arch=('x86_64')
+url='https://github.com/fabiocmazzo/quillwright'
+license=('MIT')
+depends=('gtk3' 'libxkbcommon' 'wayland' 'libx11' 'libxcursor' 'libxrandr' 'libxi'
+         'fontconfig' 'freetype2' 'libglvnd' 'gcc-libs' 'glibc')
+optdepends=('hunspell-en_us: more English spelling dictionaries'
+            'hunspell-es_any: Spanish spelling dictionary (other hunspell-* packages work too)'
+            'claude-code: assistant backend'
+            'ollama: local assistant backend')
+provides=("$_pkgname=$pkgver")
+conflicts=("$_pkgname")
+options=('!strip' '!debug')
+source=("$url/releases/download/v$pkgver/$_pkgname-$pkgver-linux-x86_64.tar.gz")
+sha256sums=('284c417f3d2bf71384a785def015139e2fb2c2ecbd0baffabea392707d3e49a3')
+
+package() {
+  cd "$_pkgname-$pkgver-linux-x86_64"
+  install -Dm755 quillwright -t "$pkgdir/usr/bin"
+  install -Dm644 quillwright.desktop -t "$pkgdir/usr/share/applications"
+  install -Dm644 quillwright.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/quillwright.png"
+  install -Dm644 LICENSE -t "$pkgdir/usr/share/licenses/$pkgname"
+  install -Dm644 README.md -t "$pkgdir/usr/share/doc/$pkgname"
+}
