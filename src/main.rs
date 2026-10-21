@@ -20,6 +20,8 @@ mod project;
 mod reference;
 mod reference_ui;
 mod saving;
+mod search;
+mod search_ui;
 mod spelling;
 mod spelling_ui;
 mod theme;
@@ -149,6 +151,7 @@ struct MarkdownApp {
     export: export_ui::ExportState,
     spelling: spelling::Speller,
     reference: reference_ui::ReferenceState,
+    search: search_ui::SearchState,
     /// Where version history is kept; None if no data directory is available.
     history_root: Option<PathBuf>,
 }
@@ -357,6 +360,7 @@ impl Default for MarkdownApp {
             export: export_ui::ExportState::default(),
             spelling: spelling::Speller::default(),
             reference: reference_ui::ReferenceState::default(),
+            search: search_ui::SearchState::default(),
             history_root: history::default_root(),
         };
 
@@ -391,8 +395,11 @@ impl eframe::App for MarkdownApp {
         // Handle hotkeys. Actions that need the context run after the input lock is released.
         let (mut new_chapter, mut save, mut text_delta) = (false, false, 0.0);
         let mut open_export = false;
+        let mut open_search = false;
         ctx.input(|i| {
-            if i.key_pressed(egui::Key::H) && i.modifiers.ctrl {
+            if i.key_pressed(egui::Key::H) && i.modifiers.ctrl && i.modifiers.shift {
+                open_search = true;
+            } else if i.key_pressed(egui::Key::H) && i.modifiers.ctrl {
                 self.show_help_overlay = !self.show_help_overlay;
             }
             if i.key_pressed(egui::Key::Q) && i.modifiers.ctrl {
@@ -494,6 +501,9 @@ impl eframe::App for MarkdownApp {
         if open_export {
             self.open_export();
         }
+        if open_search {
+            self.open_project_search();
+        }
         if self.pending_focus_toggle {
             self.pending_focus_toggle = false;
             self.set_focus_mode(ctx, !self.focus_mode);
@@ -505,7 +515,9 @@ impl eframe::App for MarkdownApp {
             self.index_dirty = false;
             self.refresh_spelling();
             self.refresh_reference();
+            self.search.refresh();
         }
+        self.poll_project_search(ctx);
 
         if !self.focus_mode {
             self.show_menu_bar(ui);

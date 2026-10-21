@@ -170,7 +170,7 @@ fn run(
     let mut texts: Vec<PageText> = Vec::new();
     if let Some(cached) = cache_file
         .as_deref()
-        .and_then(|file| text::read_cache(file, pages.len()))
+        .and_then(|file| text::read_cache(file, Some(pages.len())))
     {
         let mut state = shared.lock();
         state.text_pages = cached.len();
@@ -229,6 +229,36 @@ fn run(
         state.finished.push(Rendered { key, image });
         state.current = None;
     }
+}
+
+/// The text of every page of the PDF at `path`: from the cache when there is one, otherwise
+/// extracted now (on the calling thread) and cached.
+pub fn text_of(path: &Path, cache_dir: Option<&Path>) -> Result<Vec<PageText>, String> {
+    let cache_file = cache_dir.and_then(|dir| text::cache_file(dir, path));
+    if let Some(cached) = cache_file
+        .as_deref()
+        .and_then(|f| text::read_cache(f, None))
+    {
+        return Ok(cached);
+    }
+    let pdf = Pdf::new(fs::read(path).map_err(|e| e.to_string())?).map_err(|e| load_error(&e))?;
+    let settings = InterpreterSettings::default();
+    let cache = InterpreterCache::new();
+    let pages: Vec<PageText> = pdf
+        .pages()
+        .iter()
+        .map(|page| {
+            let (w, h) = page.render_dimensions();
+            panic::catch_unwind(AssertUnwindSafe(|| {
+                extract(page, &cache, &settings, [w.max(1.0), h.max(1.0)])
+            }))
+            .unwrap_or_default()
+        })
+        .collect();
+    if let Some(file) = &cache_file {
+        let _ = text::write_cache(file, &pages);
+    }
+    Ok(pages)
 }
 
 fn extract<'a>(
@@ -338,7 +368,7 @@ pub(crate) mod tests {
 
     /// One 200 × 100 pt page of Helvetica text: two words placed apart on one line, an
     /// accented word, and a word hyphenated across two lines.
-    fn text_pdf() -> Vec<u8> {
+    pub(crate) fn text_pdf() -> Vec<u8> {
         let content: &[u8] = b"BT /F1 12 Tf 20 70 Td (Hello) Tj 40 0 Td (World) Tj ET \
             BT /F1 12 Tf 20 50 Td (Cora\xe7\xe3o) Tj ET \
             BT /F1 12 Tf 20 30 Td (har-) Tj 0 -14 Td (bor) Tj ET";
@@ -433,7 +463,7 @@ pub(crate) mod tests {
                     .all(|(a, b)| a.iter().zip(b).all(|(x, y)| (x - y).abs() <= 0.051))
         };
         let file = text::cache_file(&cache, &path).unwrap();
-        assert!(close(&text::read_cache(&file, 1).unwrap()[0]));
+        assert!(close(&text::read_cache(&file, Some(1)).unwrap()[0]));
         let again = Document::open(&path, Some(&cache)).unwrap();
         assert!(close(&wait_for_text(&again)[0].1));
     }

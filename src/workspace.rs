@@ -26,6 +26,7 @@ pub const SHORTCUTS: &[(&str, &str)] = &[
     ("Ctrl+Shift+S / Alt+S", "Save as"),
     ("Ctrl+Z / Ctrl+Y", "Undo / Redo"),
     ("Ctrl+F / Ctrl+R", "Find / Replace"),
+    ("Ctrl+Shift+H", "Search the whole project"),
     ("Ctrl+D", "Delete line"),
     ("Page Up / Page Down", "Move one page"),
     ("Ctrl+Shift+L / Ctrl+Shift+F", "Lint / Format Markdown"),
@@ -214,6 +215,10 @@ impl MarkdownApp {
             self.config.view.sidebar = sidebar;
             self.save_config();
         }
+        if ui.button("Search Project...\tCtrl+Shift+H").clicked() {
+            self.open_project_search();
+            ui.close();
+        }
         let mut reference = self.reference.open;
         if ui
             .add_enabled(
@@ -352,6 +357,7 @@ impl MarkdownApp {
         };
         let cursor = self.current_char_index;
         let mut action = None;
+        let mut search_action = None;
 
         egui::Panel::left("navigator")
             .resizable(true)
@@ -399,6 +405,8 @@ impl MarkdownApp {
                         .color(p.muted),
                     );
                 }
+                ui.add_space(6.0);
+                self.search_field(ui, &p);
                 ui.add_space(4.0);
 
                 // A solid scroll bar takes its own space; a floating one would cover the
@@ -407,6 +415,10 @@ impl MarkdownApp {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false; 2])
                     .show(ui, |ui| {
+                        if self.search.active() {
+                            search_action = self.search_results(ui, &p);
+                            return;
+                        }
                         if index.has_chapters_dir {
                             if section(ui, "Chapters", Some("New chapter"), &p) {
                                 action = Some(NavAction::NewChapter);
@@ -520,6 +532,7 @@ impl MarkdownApp {
                     });
             });
         self.apply_nav_action(action);
+        self.apply_search_action(search_action);
     }
 
     fn apply_nav_action(&mut self, action: Option<NavAction>) {

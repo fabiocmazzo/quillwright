@@ -4,8 +4,8 @@ Writers keep research next to the book: PDFs of articles and books, photos, maps
 notes, plain-text clippings. This document describes how Quillwright shows that material
 **beside** the manuscript, and how it will become searchable.
 
-Status: steps 1 (research folder, text and image viewer), 2 (PDF viewer), and 3 (search
-in the open PDF) are implemented. Steps 4 and 5 are planned.
+Status: steps 1 to 4 (research folder, text and image viewer, PDF viewer, search in the
+open PDF, project-wide search) are implemented. Step 5 is planned.
 
 ## Principles
 
@@ -104,12 +104,27 @@ features. Scanned PDFs have no text layer, so they can be viewed but not searche
 4. **Highlights.** Each match becomes one rectangle per line (`text::highlight`), drawn over
    the page; the current match is orange.
 
-### Across the project (step 4)
+### Across the project (step 4, done)
 
-**Project-wide search** covers chapters, characters, notes, and research in one result
-list. A result opens the chapter at the position, or the PDF at the page with the match
-highlighted. The PDF text cache can be read without opening the PDF, so research PDFs
-that were opened once are searchable right away; others can be extracted in the background.
+The search field at the top of the sidebar (`search_ui.rs`, Ctrl+Shift+H) covers chapters,
+characters, notes, and research text, Markdown, and PDF files. While it has text, the
+sidebar shows results instead of the manuscript.
+
+- **Worker.** `search::Searcher` owns one thread. Each query gets a generation number; the
+  worker takes the newest request and stops an older one between files. The field waits
+  0.25 s after the last keystroke before sending.
+- **Sources.** Built from the manuscript index each time. The open file is searched from the
+  editor buffer, so unsaved text is found. Text files are searched first and their results
+  sent at once; PDFs follow.
+- **PDFs.** `pdf::text_of` reads the text cache, or extracts the whole PDF on the worker
+  thread and writes the cache. An extraction is never interrupted, so typing cannot make a
+  large PDF start over. The sidebar shows "reading … for the first time" meanwhile.
+- **Results.** Per file, up to 100 hits are kept (all are counted), 2000 in total, each
+  with its line or page and about 40 characters of context before and 70 after.
+- **Opening.** A text hit opens the file through `run_or_prompt_discard` and then selects the
+  match (`SearchState::reveal`, applied once the file is open, dropped if the author
+  cancels). A PDF hit calls `reveal_in_pdf`, and `PdfView::find_at` selects that exact match
+  (page and character index) as soon as its page's text is available.
 
 OCR for scanned PDFs (for example the pure-Rust `ocrs`) is out of scope for now.
 
@@ -125,5 +140,5 @@ only suggests; nothing enters the manuscript unless the author accepts it.
 2. PDF viewer: background rendering, visible pages only, texture cache, page navigation.
    **Done.**
 3. PDF text extraction, cache, and search in the open PDF with highlights. **Done.**
-4. Project-wide search across the manuscript and research.
+4. Project-wide search across the manuscript and research. **Done.**
 5. "Use as Context" from references in the assistant.

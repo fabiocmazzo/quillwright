@@ -24,6 +24,8 @@ pub struct ReferenceState {
     error: Option<String>,
     /// Images: fit the panel width (true) or show at 100 %.
     fit_width: bool,
+    /// A search result to show once the PDF is open: (query, page, character index).
+    pending_find: Option<(String, usize, usize)>,
 }
 
 impl Default for ReferenceState {
@@ -36,6 +38,7 @@ impl Default for ReferenceState {
             loading: None,
             error: None,
             fit_width: true,
+            pending_find: None,
         }
     }
 }
@@ -78,6 +81,12 @@ impl MarkdownApp {
         state.fit_width = true;
         state.loading = Some(reference::load_in_background(path.clone()));
         state.path = Some(path);
+    }
+
+    /// Open a PDF at a search match (from project search).
+    pub(crate) fn reveal_in_pdf(&mut self, path: PathBuf, query: String, page: usize, at: usize) {
+        self.open_reference(path);
+        self.reference.pending_find = Some((query, page, at));
     }
 
     pub(crate) fn toggle_reference(&mut self) {
@@ -353,7 +362,12 @@ impl MarkdownApp {
                         }
                     });
             }
-            Shown::Pdf(view) => view.show(ui, p),
+            Shown::Pdf(view) => {
+                if let Some((query, page, at)) = state.pending_find.take() {
+                    view.find_at(query, page, at);
+                }
+                view.show(ui, p)
+            }
             Shown::Unsupported(message) => {
                 ui.add_space(8.0);
                 ui.label(RichText::new(message.as_str()).color(p.muted));

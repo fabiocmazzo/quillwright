@@ -50,7 +50,7 @@ yet.
 ```bash
 cargo run                                # debug build
 cargo run --release -- path/to/file.md   # open a file directly
-cargo test                               # 88 unit tests, about 1 s
+cargo test                               # 90 unit tests, about 1 s
 cargo fmt && cargo clippy --all-targets --locked -- -D warnings
 packaging/linux/build.sh 0.4.0           # AppImage + .tar.gz in dist/ (after a release build)
 packaging/linux/install-local.sh         # install the release build, menu entry, and icon in ~/.local
@@ -97,6 +97,8 @@ XDG_CONFIG_HOME=/tmp/qw/cfg XDG_DATA_HOME=/tmp/qw/data cargo run -- /tmp/qw/book
 | `src/reference/pdf.rs` | PDF `Document`: a hayro thread that owns the parsed file, renders requested pages, and extracts text between renders |
 | `src/reference/text.rs` | PDF text: the extracting `Device` (characters with boxes), search folding (case, accents, line hyphens), highlights, the compressed text cache |
 | `src/pdf_view.rs` | PDF viewer in the Reference panel: stacked pages, visible-page requests, texture cache, page jump, zoom |
+| `src/search.rs` | Project-wide search: sources, the worker thread (`Searcher`, newest query wins), hits with line/page and context |
+| `src/search_ui.rs` | Sidebar search field and results (Ctrl+Shift+H), opening a hit in the editor or the PDF viewer |
 | `src/reference_ui.rs` | Reference side panel (read only), Add Research Files, `open_with_system` |
 | `src/theme.rs` | Paper / Sepia / Night palettes and egui styling |
 | `src/fonts.rs` | Bundled fonts (Literata, Atkinson Hyperlegible) and system font fallback |
@@ -219,6 +221,17 @@ to the original characters, so matches turn into highlight boxes. The text is ca
 (deflate-compressed, boxes delta-encoded in tenths of a point); older caches of the same
 file are removed when a new one is written.
 
+### Project search
+
+`search_ui::SearchState` holds the sidebar query; `poll_project_search` (every frame) sends
+it to `search::Searcher` 0.25 s after typing stops, collects results, and applies a pending
+reveal. The worker thread takes the newest request and stops older ones between files; PDFs
+go through `pdf::text_of` (cache, or a full extraction that is never interrupted). Folding
+is shared with PDF search (`reference::text::fold`). Hits store character ranges into the
+searched text, so a text hit becomes `pending_selection` once the file is open, and a PDF hit
+becomes `PdfView::find_at(query, page, index)`. The index rebuild calls `search.refresh()`
+so results follow changes on disk.
+
 ### Export
 
 `export_ui` collects the chapters in sidebar order (the editor buffer for the open chapter) and
@@ -296,9 +309,8 @@ A longer-term idea, *project kinds* (Novel, Legal case, ...) sharing one core, i
 1. **Verify the 0.4.0 packages on real Windows and macOS machines.** Check the icon, the
    absence of a console window, file dialogs, the first-launch working folder (should be the
    home folder), exporting every format (PDF uses typst in-process), and running the assistant.
-2. **Reference material, steps 4 and 5** (`docs/reference-material.md`): project-wide
-   search across the manuscript and research (the PDF text and cache already exist), and
-   "Use as Context" for the assistant.
+2. **Reference material, step 5** (`docs/reference-material.md`): "Use as Context" for the
+   assistant (a passage from a reference, with its citation, added to the next prompt).
 3. **Review agent changes (assistant "phase 2").** When an external change reloads the open
    chapter, highlight the changed passages and offer accept or revert per passage. The pieces
    exist: the history copy taken before reload (`reload_from_disk`), word diffs
@@ -314,7 +326,8 @@ A longer-term idea, *project kinds* (Novel, Legal case, ...) sharing one core, i
    `upload-artifact`, `download-artifact`, `softprops/action-gh-release`). Read each
    changelog before bumping a major version.
 7. **Manuscript navigation:** drag to reorder chapters (renumbering the `001-` prefixes),
-   search across the whole project, and a word count per character or POV.
+   and a word count per character or POV. Project search snippets show raw Markdown
+   (`**`); stripping it would read better.
 8. **Export polish:** fonts beyond Literata's Latin, Greek, and Cyrillic coverage in PDFs
    (load system fonts lazily through `fontdb`), drop caps or small caps for chapter openings,
    running headers in PDF, page numbers in the ODT table of contents, and validating EPUBs

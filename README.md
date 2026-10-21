@@ -82,7 +82,16 @@ Keep the material you write from (articles, photos, maps, clippings, notes) in a
 - **Read only.** The panel never changes a file. Text and Markdown files have an **Edit** button that opens them in the editor. If a file changes on disk, the panel shows the new version.
 - **View → Reference Panel** shows or hides the panel again.
 
-Search across the whole project is planned; see [docs/reference-material.md](docs/reference-material.md).
+How it works inside is described in [docs/reference-material.md](docs/reference-material.md).
+
+## Searching the project
+
+Press **Ctrl+Shift+H** (or **View → Search Project...**) and type in the field at the top of the sidebar. While it has text, the sidebar lists every match in the chapters, character sheets, notes, and research files (text, Markdown, and PDFs), grouped by file, with the line or page and a bit of context. **Esc** clears the search and brings the manuscript back.
+
+- Like the PDF search, it ignores case and accents and finds words hyphenated across a line break.
+- The open chapter is searched as it is in the editor, including unsaved changes.
+- Click a match in a chapter or note to open it with the match selected. Click a match in a PDF to open it in the Reference panel at that page, with the match highlighted.
+- A PDF is read the first time it is searched (the sidebar says so), and its text is kept in the app's data folder, so later searches are quick.
 
 ## Spell checking
 
@@ -283,6 +292,7 @@ Press **Ctrl+H** in the app to see all shortcuts.
 | Ctrl+Shift+S or Alt+S | Save as |
 | Ctrl+Z / Ctrl+Y | Undo / Redo |
 | Ctrl+F / Ctrl+R | Find / Replace |
+| Ctrl+Shift+H | Search the whole project |
 | Ctrl+D | Delete line |
 | Page Up / Page Down | Move one page |
 | Ctrl+Shift+L / Ctrl+Shift+F | Lint / Format Markdown |

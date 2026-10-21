@@ -13,6 +13,10 @@ All notable changes to Quillwright are listed here. Versions follow
   background thread, one page at a time as you scroll. Jump to a page, zoom in and out,
   and keep your page when the file changes on disk. Password-protected PDFs are not
   supported yet.
+- **Project search.** Ctrl+Shift+H searches the chapters, character sheets, notes, and
+  research files (PDFs included) from the sidebar, ignoring case and accents. Results show
+  the line or page with some context; a click opens the file with the match selected, or
+  the PDF at the match.
 - **Search in PDFs.** Matches are highlighted on the page and you step through them with
   Enter. Search ignores case and accents and joins words hyphenated across lines. The text
   is extracted in the background and cached in the app's data folder.

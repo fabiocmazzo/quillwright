@@ -273,15 +273,21 @@ pub fn cache_file(dir: &Path, path: &Path) -> Option<PathBuf> {
     Some(dir.join(format!("{id:016x}-{version:016x}.cache")))
 }
 
-pub fn read_cache(file: &Path, pages: usize) -> Option<Vec<PageText>> {
+/// Read a cache file. With `pages`, a cache for a different number of pages is refused.
+pub fn read_cache(file: &Path, pages: Option<usize>) -> Option<Vec<PageText>> {
     let mut data = String::new();
     flate2::read::DeflateDecoder::new(fs::File::open(file).ok()?)
         .read_to_string(&mut data)
         .ok()?;
     let mut lines = data.lines();
-    if lines.next()? != CACHE_HEADER || lines.next()?.parse::<usize>().ok()? != pages {
+    if lines.next()? != CACHE_HEADER {
         return None;
     }
+    let count = lines.next()?.parse::<usize>().ok()?;
+    if pages.is_some_and(|pages| pages != count) {
+        return None;
+    }
+    let pages = count;
     let mut out = Vec::with_capacity(pages);
     for _ in 0..pages {
         let text = unescape(lines.next()?);
@@ -474,15 +480,15 @@ mod tests {
         let pages = vec![page("Line one\\two\nnext"), PageText::default()];
         let first = cache_file(&dir, &pdf).unwrap();
         write_cache(&first, &pages).unwrap();
-        assert_eq!(read_cache(&first, 2).unwrap(), pages);
+        assert_eq!(read_cache(&first, Some(2)).unwrap(), pages);
         // Boxes that do not touch, and that change line, survive too.
         let odd = vec![PageText {
             text: "ab".into(),
             boxes: vec![[1.5, 2.0, 3.0, 4.5], [10.0, 20.0, 12.5, 30.0]],
         }];
         write_cache(&first, &odd).unwrap();
-        assert_eq!(read_cache(&first, 1).unwrap(), odd);
-        assert!(read_cache(&first, 3).is_none());
+        assert_eq!(read_cache(&first, None).unwrap(), odd);
+        assert!(read_cache(&first, Some(3)).is_none());
 
         fs::write(&pdf, "changed, longer").unwrap();
         let second = cache_file(&dir, &pdf).unwrap();

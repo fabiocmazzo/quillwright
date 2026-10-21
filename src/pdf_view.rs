@@ -58,6 +58,8 @@ pub struct PdfView {
     matches: Vec<Match>,
     selected: Option<usize>,
     focus_search: bool,
+    /// Select the match at (page, character index) as soon as it is found.
+    want: Option<(usize, usize)>,
 }
 
 impl PdfView {
@@ -80,11 +82,38 @@ impl PdfView {
             matches: Vec::new(),
             selected: None,
             focus_search: false,
+            want: None,
         }
     }
 
     pub fn current_page(&self) -> usize {
         self.current
+    }
+
+    /// Search for `query` and show the match on `page` that starts at character `at`.
+    pub fn find_at(&mut self, query: String, page: usize, at: usize) {
+        self.query = query;
+        self.want = Some((page, at));
+        self.jump = Some((page, 0.0));
+        self.run_search();
+    }
+
+    /// Select the wanted match if it has been found. Returns true if it was.
+    fn take_want(&mut self) -> bool {
+        let Some((page, at)) = self.want else {
+            return false;
+        };
+        let Some(i) = self
+            .matches
+            .iter()
+            .position(|m| m.page == page && m.range.start == at)
+        else {
+            return false;
+        };
+        self.want = None;
+        self.selected = Some(i);
+        self.jump_to_selected();
+        true
     }
 
     pub fn show(&mut self, ui: &mut Ui, p: &theme::Palette) {
@@ -246,6 +275,14 @@ impl PdfView {
                     min + vec2(r[2] * scale, r[3] * scale),
                 );
                 painter.rect_filled(rect.expand(1.0), 2.0, color);
+                if self.selected == Some(i) {
+                    painter.rect_stroke(
+                        rect.expand(1.0),
+                        2.0,
+                        egui::Stroke::new(1.5, Color32::from_rgb(230, 100, 0)),
+                        egui::StrokeKind::Outside,
+                    );
+                }
             }
         }
     }
@@ -267,9 +304,11 @@ impl PdfView {
                     .collect();
                 let added = found.len();
                 self.matches.splice(at..at, found);
-                match self.selected {
+                let selected = self.selected;
+                match selected {
+                    _ if self.want.is_some() && self.take_want() => {}
                     Some(selected) if selected >= at => self.selected = Some(selected + added),
-                    None if added > 0 => {
+                    None if added > 0 && self.want.is_none() => {
                         // The first matches have arrived while the author waits.
                         self.selected = Some(at);
                         self.jump_to_selected();
@@ -300,7 +339,10 @@ impl PdfView {
             }
         }
         // Start from the page being read, not from the beginning of the book.
-        if !self.matches.is_empty() {
+        if self.take_want() {
+            return;
+        }
+        if !self.matches.is_empty() && self.want.is_none() {
             let from_here = self.matches.partition_point(|m| m.page < self.current);
             self.selected = Some(from_here % self.matches.len());
             self.jump_to_selected();
