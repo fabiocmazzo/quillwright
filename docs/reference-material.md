@@ -4,8 +4,8 @@ Writers keep research next to the book: PDFs of articles and books, photos, maps
 notes, plain-text clippings. This document describes how Quillwright shows that material
 **beside** the manuscript, and how it will become searchable.
 
-Status: steps 1 (research folder, text and image viewer) and 2 (PDF viewer) are
-implemented. Steps 3 to 5 are planned.
+Status: steps 1 (research folder, text and image viewer), 2 (PDF viewer), and 3 (search
+in the open PDF) are implemented. Steps 4 and 5 are planned.
 
 ## Principles
 
@@ -30,7 +30,8 @@ the pattern of the assistant and export:
 | Piece | Role |
 | --- | --- |
 | `src/reference/mod.rs` | `Kind` (by extension), loading a file into a `Content` on a background thread, copying files into `research/` |
-| `src/reference/pdf.rs` | `Document`: a render thread that owns the parsed PDF |
+| `src/reference/pdf.rs` | `Document`: a thread that owns the parsed PDF, renders pages, and extracts text |
+| `src/reference/text.rs` | Text extraction, search folding, highlights, the text cache |
 | `src/pdf_view.rs` | The PDF viewer: stacked pages, page requests, textures, navigation, zoom |
 | `src/reference_ui.rs` | The Reference side panel, the sidebar's Research section actions, "Add Research Files…" |
 | `manuscript::Index::research` | Files under `research/` (recursive), sorted by path |
@@ -79,21 +80,36 @@ caught; that page shows "This page could not be shown" and the others keep worki
 hayro renders on the CPU, does not open password-protected PDFs, and still lacks a few rare
 features. Scanned PDFs have no text layer, so they can be viewed but not searched.
 
-## Search (steps 3 and 4)
+## Search
 
-hayro passes each glyph to a `Device` together with `Glyph::as_unicode()` and its transform.
-The `extract_html` example in `hayro-interpret` shows the technique.
+### In the open PDF (step 3, done)
 
-1. **Extract** per page a `PageText { text: String, boxes: Vec<(Range<usize>, Rect)> }` on a
-   background thread. The boxes turn each match into a highlighted rectangle on the rendered
-   page.
-2. **Cache** it in `<data dir>/quillwright/text-cache/<fnv hash of path>-<mtime>-<size>`.
-3. **Search** with a linear scan in memory (fast enough for hundreds of PDFs, no index
-   needed). Normalize case and diacritics (so "coracao" finds "coração"), and join words
-   hyphenated across line ends and ligatures (fi, fl).
-4. **Project-wide search** covers chapters, characters, notes, and research in one result
-   list. A result opens the chapter at the position, or the PDF at the page with the match
-   highlighted.
+1. **Extraction.** When no page is waiting to be rendered, the PDF thread interprets the
+   next page with `text::Extractor`, a hayro `Device` that receives each glyph with
+   `Glyph::as_unicode()` and its transform. It produces a `PageText { text, boxes }` with
+   one box per character, in PDF points from the page's top-left corner (the same transform
+   the renderer uses, so boxes line up with the image). Spaces are inserted where the gap
+   between glyphs is wider than a fifth of the font size, and line breaks where the baseline
+   changes. Ligatures ("ﬁ") become several characters sharing the glyph's box.
+2. **Cache.** When every page is done, the text is written to
+   `<data dir>/quillwright/text-cache/<fnv of path>-<fnv of size and mtime>.cache`:
+   deflate-compressed, with boxes delta-encoded in tenths of a point (about 650 bytes a page
+   in tests). Writing a new cache removes older ones for the same file. The next time the
+   PDF opens, its text is available at once.
+3. **Search.** `text::fold` lowercases, removes accents (NFKD without combining marks),
+   collapses whitespace, and joins a hyphen followed by a line break, keeping a map back to
+   the original characters. Matching is a linear scan, fast enough for long books. Matches
+   are kept in page order; as more pages are read, their matches are inserted. The first
+   match shown is the first one from the page being read.
+4. **Highlights.** Each match becomes one rectangle per line (`text::highlight`), drawn over
+   the page; the current match is orange.
+
+### Across the project (step 4)
+
+**Project-wide search** covers chapters, characters, notes, and research in one result
+list. A result opens the chapter at the position, or the PDF at the page with the match
+highlighted. The PDF text cache can be read without opening the PDF, so research PDFs
+that were opened once are searchable right away; others can be extracted in the background.
 
 OCR for scanned PDFs (for example the pure-Rust `ocrs`) is out of scope for now.
 
@@ -108,6 +124,6 @@ only suggests; nothing enters the manuscript unless the author accepts it.
 1. Research folder, sidebar section, Reference panel for text and images. **Done.**
 2. PDF viewer: background rendering, visible pages only, texture cache, page navigation.
    **Done.**
-3. PDF text extraction, cache, and search in the open PDF with highlights.
+3. PDF text extraction, cache, and search in the open PDF with highlights. **Done.**
 4. Project-wide search across the manuscript and research.
 5. "Use as Context" from references in the assistant.

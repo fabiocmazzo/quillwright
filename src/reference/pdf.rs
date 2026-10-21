@@ -3,17 +3,22 @@
 //! hayro's document and caches borrow each other and use `Rc`, so one thread owns them
 //! for the life of the open document. The viewer tells it which pages it needs; the
 //! list is replaced every frame, so pages that scrolled away are never rendered.
+//! Between renders, the thread extracts the text of each page for search (or reads it from
+//! the cache in the user data folder).
+use super::text::{self, PageText};
 use eframe::egui::ColorImage;
 use hayro::{
-    hayro_interpret::InterpreterSettings,
-    hayro_syntax::{LoadPdfError, Pdf},
+    hayro_interpret::{
+        interpret_page, util::TransformExt, Context, InterpreterCache, InterpreterSettings,
+    },
+    hayro_syntax::{page::Page, LoadPdfError, Pdf},
     vello_cpu::color::palette::css::WHITE,
     RenderCache, RenderSettings,
 };
 use std::{
     fs,
     panic::{self, AssertUnwindSafe},
-    path::Path,
+    path::{Path, PathBuf},
     sync::{mpsc, Arc, Condvar, Mutex, MutexGuard},
     thread,
 };
@@ -34,11 +39,22 @@ pub struct Rendered {
     pub image: Option<ColorImage>,
 }
 
+/// What arrived since the last exchange.
+#[derive(Default)]
+pub struct Update {
+    pub rendered: Vec<Rendered>,
+    /// (page index, text), in page order.
+    pub texts: Vec<(usize, PageText)>,
+}
+
 #[derive(Default)]
 struct State {
     wanted: Vec<Key>,
     current: Option<Key>,
     finished: Vec<Rendered>,
+    texts: Vec<(usize, PageText)>,
+    /// Pages whose text has been extracted (or read from the cache).
+    text_pages: usize,
     closed: bool,
 }
 
@@ -62,14 +78,16 @@ pub struct Document {
 }
 
 impl Document {
-    pub fn open(path: &Path) -> Result<Document, String> {
+    /// Open `path`. With `cache_dir`, extracted text is cached there.
+    pub fn open(path: &Path, cache_dir: Option<&Path>) -> Result<Document, String> {
         let data = fs::read(path).map_err(|e| e.to_string())?;
+        let cache_file = cache_dir.and_then(|dir| text::cache_file(dir, path));
         let shared = Arc::new(Shared::default());
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let thread_shared = shared.clone();
         thread::Builder::new()
             .name("pdf-render".into())
-            .spawn(move || run(data, &thread_shared, ready_tx))
+            .spawn(move || run(data, &thread_shared, ready_tx, cache_file))
             .map_err(|e| e.to_string())?;
         let pages = ready_rx
             .recv()
@@ -81,26 +99,33 @@ impl Document {
         &self.pages
     }
 
-    /// Collect finished pages and say which pages are still needed, most important
-    /// first. `wanted` sees the finished pages, so it can leave them out.
-    pub fn exchange(&self, wanted: impl FnOnce(&[Rendered]) -> Vec<Key>) -> Vec<Rendered> {
+    /// Collect finished pages and text, and say which pages are still needed, most
+    /// important first. `wanted` sees the finished pages, so it can leave them out.
+    pub fn exchange(&self, wanted: impl FnOnce(&[Rendered]) -> Vec<Key>) -> Update {
         let mut state = self.shared.lock();
-        let finished = std::mem::take(&mut state.finished);
+        let rendered = std::mem::take(&mut state.finished);
+        let texts = std::mem::take(&mut state.texts);
         let current = state.current;
-        state.wanted = wanted(&finished)
+        state.wanted = wanted(&rendered)
             .into_iter()
             .filter(|key| Some(*key) != current)
             .collect();
         if !state.wanted.is_empty() {
             self.shared.wake.notify_one();
         }
-        finished
+        Update { rendered, texts }
     }
 
-    /// True while a page is being rendered or waiting to be.
+    /// True while a page is being rendered or waiting to be collected. (Text arriving
+    /// in the background does not count: it is collected on the next frame.)
     pub fn busy(&self) -> bool {
         let state = self.shared.lock();
         state.current.is_some() || !state.wanted.is_empty() || !state.finished.is_empty()
+    }
+
+    /// How many pages have their text ready, counting pages not yet collected.
+    pub fn text_pages(&self) -> usize {
+        self.shared.lock().text_pages
     }
 }
 
@@ -111,7 +136,12 @@ impl Drop for Document {
     }
 }
 
-fn run(data: Vec<u8>, shared: &Shared, ready: mpsc::SyncSender<Result<Vec<[f32; 2]>, String>>) {
+fn run(
+    data: Vec<u8>,
+    shared: &Shared,
+    ready: mpsc::SyncSender<Result<Vec<[f32; 2]>, String>>,
+    cache_file: Option<PathBuf>,
+) {
     let pdf = match Pdf::new(data) {
         Ok(pdf) => pdf,
         Err(error) => {
@@ -136,6 +166,17 @@ fn run(data: Vec<u8>, shared: &Shared, ready: mpsc::SyncSender<Result<Vec<[f32; 
     }
     let settings = InterpreterSettings::default();
     let mut cache = RenderCache::new();
+    let text_cache = InterpreterCache::new();
+    let mut texts: Vec<PageText> = Vec::new();
+    if let Some(cached) = cache_file
+        .as_deref()
+        .and_then(|file| text::read_cache(file, pages.len()))
+    {
+        let mut state = shared.lock();
+        state.text_pages = cached.len();
+        state.texts = cached.into_iter().enumerate().collect();
+    }
+    let mut text_done = shared.lock().text_pages == pages.len();
     loop {
         let key = {
             let mut state = shared.lock();
@@ -146,10 +187,32 @@ fn run(data: Vec<u8>, shared: &Shared, ready: mpsc::SyncSender<Result<Vec<[f32; 
                 if !state.wanted.is_empty() {
                     let key = state.wanted.remove(0);
                     state.current = Some(key);
-                    break key;
+                    break Some(key);
+                }
+                if !text_done {
+                    break None;
                 }
                 state = shared.wake.wait(state).unwrap_or_else(|e| e.into_inner());
             }
+        };
+        let Some(key) = key else {
+            // Nothing to render: extract the next page's text.
+            let index = texts.len();
+            let page_text = panic::catch_unwind(AssertUnwindSafe(|| {
+                extract(&pages[index], &text_cache, &settings, sizes[index])
+            }))
+            .unwrap_or_default();
+            texts.push(page_text.clone());
+            text_done = texts.len() == pages.len();
+            if text_done {
+                if let Some(file) = &cache_file {
+                    let _ = text::write_cache(file, &texts);
+                }
+            }
+            let mut state = shared.lock();
+            state.texts.push((index, page_text));
+            state.text_pages = texts.len();
+            continue;
         };
         let image = match pages.get(key.page) {
             Some(page) => panic::catch_unwind(AssertUnwindSafe(|| {
@@ -168,8 +231,26 @@ fn run(data: Vec<u8>, shared: &Shared, ready: mpsc::SyncSender<Result<Vec<[f32; 
     }
 }
 
+fn extract<'a>(
+    page: &'a Page<'a>,
+    cache: &InterpreterCache<'a>,
+    settings: &InterpreterSettings,
+    size: [f32; 2],
+) -> PageText {
+    let mut context = Context::new(
+        page.initial_transform(true).to_kurbo(),
+        kurbo::Rect::new(0.0, 0.0, size[0] as f64, size[1] as f64),
+        cache,
+        page.xref(),
+        settings.clone(),
+    );
+    let mut extractor = text::Extractor::default();
+    interpret_page(page, &mut context, &mut extractor);
+    extractor.finish()
+}
+
 fn render<'a>(
-    page: &'a hayro::hayro_syntax::page::Page<'a>,
+    page: &'a Page<'a>,
     cache: &RenderCache<'a>,
     settings: &InterpreterSettings,
     width: u32,
@@ -255,6 +336,108 @@ pub(crate) mod tests {
         out
     }
 
+    /// One 200 × 100 pt page of Helvetica text: two words placed apart on one line, an
+    /// accented word, and a word hyphenated across two lines.
+    fn text_pdf() -> Vec<u8> {
+        let content: &[u8] = b"BT /F1 12 Tf 20 70 Td (Hello) Tj 40 0 Td (World) Tj ET \
+            BT /F1 12 Tf 20 50 Td (Cora\xe7\xe3o) Tj ET \
+            BT /F1 12 Tf 20 30 Td (har-) Tj 0 -14 Td (bor) Tj ET";
+        let mut objects: Vec<Vec<u8>> = vec![
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [4 0 R] /Count 1 >>".to_vec(),
+        ];
+        let mut stream = format!("<< /Length {} >>\nstream\n", content.len()).into_bytes();
+        stream.extend_from_slice(content);
+        stream.extend_from_slice(b"\nendstream");
+        objects.push(stream);
+        objects.push(
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Contents 3 0 R \
+              /Resources << /Font << /F1 5 0 R >> >> >>"
+                .to_vec(),
+        );
+        objects.push(
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
+                .to_vec(),
+        );
+        let mut out = b"%PDF-1.4\n".to_vec();
+        let mut offsets = Vec::new();
+        for (i, object) in objects.iter().enumerate() {
+            offsets.push(out.len());
+            out.extend(format!("{} 0 obj\n", i + 1).bytes());
+            out.extend_from_slice(object);
+            out.extend_from_slice(b"\nendobj\n");
+        }
+        let xref = out.len();
+        out.extend(format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).bytes());
+        for offset in offsets {
+            out.extend(format!("{offset:010} 00000 n \n").bytes());
+        }
+        out.extend(
+            format!(
+                "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+                objects.len() + 1
+            )
+            .bytes(),
+        );
+        out
+    }
+
+    fn wait_for_text(doc: &Document) -> Vec<(usize, PageText)> {
+        let start = Instant::now();
+        let mut texts = Vec::new();
+        while texts.len() < doc.page_sizes().len() {
+            assert!(
+                start.elapsed() < Duration::from_secs(30),
+                "text was not extracted"
+            );
+            texts.extend(doc.exchange(|_| Vec::new()).texts);
+            thread::sleep(Duration::from_millis(10));
+        }
+        texts
+    }
+
+    #[test]
+    fn extracts_text_with_boxes_and_caches_it() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("text.pdf");
+        fs::write(&path, text_pdf()).unwrap();
+        let cache = temp.path().join("cache");
+
+        let doc = Document::open(&path, Some(&cache)).unwrap();
+        let texts = wait_for_text(&doc);
+        let page = &texts[0].1;
+        assert_eq!(page.text, "Hello World\nCoração\nhar-\nbor");
+        assert_eq!(page.boxes.len(), page.text.chars().count());
+        // "H" starts at x = 20 on the baseline 70 pt up, i.e. 30 pt from the top.
+        let h = page.boxes[0];
+        assert!((h[0] - 20.0).abs() < 0.5, "{h:?}");
+        assert!(h[1] < 30.0 && h[3] > 30.0, "{h:?}");
+        drop(doc);
+
+        // The cache is written once everything is extracted, and used next time.
+        let start = Instant::now();
+        while fs::read_dir(&cache).map_or(0, |d| d.count()) == 0 {
+            assert!(
+                start.elapsed() < Duration::from_secs(30),
+                "no cache written"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        // The cache keeps positions to a tenth of a point.
+        let close = |cached: &PageText| {
+            cached.text == page.text
+                && cached
+                    .boxes
+                    .iter()
+                    .zip(&page.boxes)
+                    .all(|(a, b)| a.iter().zip(b).all(|(x, y)| (x - y).abs() <= 0.051))
+        };
+        let file = text::cache_file(&cache, &path).unwrap();
+        assert!(close(&text::read_cache(&file, 1).unwrap()[0]));
+        let again = Document::open(&path, Some(&cache)).unwrap();
+        assert!(close(&wait_for_text(&again)[0].1));
+    }
+
     fn wait_for(doc: &Document, wanted: Vec<Key>) -> Vec<Rendered> {
         let mut done = Vec::new();
         let start = Instant::now();
@@ -269,12 +452,15 @@ pub(crate) mod tests {
                 return done;
             }
             first = false;
-            done.extend(doc.exchange(|finished| {
-                missing
-                    .into_iter()
-                    .filter(|k| !finished.iter().any(|r| r.key == *k))
-                    .collect()
-            }));
+            done.extend(
+                doc.exchange(|finished| {
+                    missing
+                        .into_iter()
+                        .filter(|k| !finished.iter().any(|r| r.key == *k))
+                        .collect()
+                })
+                .rendered,
+            );
             thread::sleep(Duration::from_millis(10));
         }
         panic!("pages were not rendered in time");
@@ -285,7 +471,7 @@ pub(crate) mod tests {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("sample.pdf");
         fs::write(&path, sample_pdf(3)).unwrap();
-        let doc = Document::open(&path).unwrap();
+        let doc = Document::open(&path, None).unwrap();
         assert_eq!(doc.page_sizes(), &[[200.0, 100.0]; 3]);
 
         let key = Key {
@@ -314,7 +500,7 @@ pub(crate) mod tests {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("fake.pdf");
         fs::write(&path, "hello").unwrap();
-        let error = Document::open(&path).err().unwrap();
+        let error = Document::open(&path, None).err().unwrap();
         assert!(error.contains("doesn't look like a PDF"), "{error}");
     }
 }

@@ -50,7 +50,7 @@ yet.
 ```bash
 cargo run                                # debug build
 cargo run --release -- path/to/file.md   # open a file directly
-cargo test                               # 84 unit tests, about 1 s
+cargo test                               # 88 unit tests, about 1 s
 cargo fmt && cargo clippy --all-targets --locked -- -D warnings
 packaging/linux/build.sh 0.4.0           # AppImage + .tar.gz in dist/ (after a release build)
 packaging/linux/install-local.sh         # install the release build, menu entry, and icon in ~/.local
@@ -94,7 +94,8 @@ XDG_CONFIG_HOME=/tmp/qw/cfg XDG_DATA_HOME=/tmp/qw/data cargo run -- /tmp/qw/book
 | `src/spelling.rs` | Spell checking: finding and loading Hunspell dictionaries (spellbook), word tokenizing, the project's `dictionary.txt`, check cache, suggestions |
 | `src/spelling_ui.rs` | Editor right-click menu, View → Check Spelling / Spelling Language, refreshing the language and word list with the index |
 | `src/reference/mod.rs` | Research files: kinds by extension, background loading (text, images, PDFs), copying files into `research/` without overwriting |
-| `src/reference/pdf.rs` | PDF `Document`: a hayro render thread that owns the parsed file and renders requested pages |
+| `src/reference/pdf.rs` | PDF `Document`: a hayro thread that owns the parsed file, renders requested pages, and extracts text between renders |
+| `src/reference/text.rs` | PDF text: the extracting `Device` (characters with boxes), search folding (case, accents, line hyphens), highlights, the compressed text cache |
 | `src/pdf_view.rs` | PDF viewer in the Reference panel: stacked pages, visible-page requests, texture cache, page jump, zoom |
 | `src/reference_ui.rs` | Reference side panel (read only), Add Research Files, `open_with_system` |
 | `src/theme.rs` | Paper / Sepia / Night palettes and egui styling |
@@ -207,6 +208,17 @@ kept within 6 pages of the current one. A hayro panic on one page is caught and 
 shows a message. Remember to `request_repaint` when results arrive: the frame that receives
 them has already painted placeholders.
 
+When no page is wanted, the same thread extracts the next page's text with
+`text::Extractor`, a hayro `Device` that records each glyph's Unicode text and box (in PDF
+points from the page's top-left corner, using the page's render transform, so boxes line up
+with the rendered page). It inserts spaces and line breaks from glyph gaps and baselines.
+Text arrives through `Document::exchange` (`Update::texts`). `text::fold` lowercases,
+strips accents (NFKD), collapses whitespace, and joins `-` + line break, keeping a map back
+to the original characters, so matches turn into highlight boxes. The text is cached in
+`<data dir>/quillwright/text-cache/<fnv of path>-<fnv of size and mtime>.cache`
+(deflate-compressed, boxes delta-encoded in tenths of a point); older caches of the same
+file are removed when a new one is written.
+
 ### Export
 
 `export_ui` collects the chapters in sidebar order (the editor buffer for the open chapter) and
@@ -284,9 +296,9 @@ A longer-term idea, *project kinds* (Novel, Legal case, ...) sharing one core, i
 1. **Verify the 0.4.0 packages on real Windows and macOS machines.** Check the icon, the
    absence of a console window, file dialogs, the first-launch working folder (should be the
    home folder), exporting every format (PDF uses typst in-process), and running the assistant.
-2. **Reference material, steps 3 to 5** (`docs/reference-material.md`): PDF text
-   extraction and search with highlights, project-wide search, and "Use as Context" for
-   the assistant.
+2. **Reference material, steps 4 and 5** (`docs/reference-material.md`): project-wide
+   search across the manuscript and research (the PDF text and cache already exist), and
+   "Use as Context" for the assistant.
 3. **Review agent changes (assistant "phase 2").** When an external change reloads the open
    chapter, highlight the changed passages and offer accept or revert per passage. The pieces
    exist: the history copy taken before reload (`reload_from_disk`), word diffs

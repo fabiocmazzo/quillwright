@@ -2,6 +2,7 @@
 //! Loading happens on a background thread; nothing here ever writes to a file the
 //! author already has (adding research files only creates new ones).
 pub mod pdf;
+pub mod text;
 
 use eframe::egui::ColorImage;
 use std::{
@@ -112,7 +113,9 @@ pub fn load(path: &Path) -> Result<Content, String> {
         Kind::Text => read_text(path).map(Content::Text),
         Kind::Markdown => read_text(path).map(Content::Markdown),
         Kind::Image => load_image(path).map(Content::Image),
-        Kind::Pdf => pdf::Document::open(path).map(Content::Pdf),
+        Kind::Pdf => {
+            pdf::Document::open(path, text::default_cache_dir().as_deref()).map(Content::Pdf)
+        }
         Kind::Other => Ok(Content::Unsupported(
             "Quillwright can't show this kind of file.".into(),
         )),

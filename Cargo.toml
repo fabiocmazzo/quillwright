@@ -47,6 +47,12 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # Rendering research PDFs (pure Rust, already used by typst). The default features embed
 # the 14 standard PDF fonts and the CJK CMaps, about 600 KB.
 hayro = "0.7.1"
+# hayro's geometry types (text extraction), and folding accents for search. Both are
+# already in the build.
+kurbo = "0.13"
+unicode-normalization = "0.1"
+# Compressing the PDF text cache (pure Rust backend, already in the build).
+flate2 = "1"
 base64 = "0.22"
 
 [[bin]]

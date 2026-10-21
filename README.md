@@ -78,10 +78,11 @@ Keep the material you write from (articles, photos, maps, clippings, notes) in a
 - **Adding files.** Press **+** next to Research, or use **File → Add Research Files...**, to copy files into `research/`. A file with the same name is never replaced; the copy gets a number instead. You can also put files there with your file manager or an agent; subfolders are fine.
 - **What it shows.** PDFs, plain text (`.txt`), Markdown notes (styled, with the syntax hidden), and PNG, JPEG, GIF, and WebP images. Click an image to switch between fitting the panel and its actual size. Other files have an **Open with System Viewer** button.
 - **PDFs.** Pages are drawn by a built-in renderer, only as you scroll to them, so long books open quickly. Type a page number to jump there, and use **−** / **+** to zoom (click the percentage to fit the panel again). A PDF that changes on disk reopens at the page you were reading.
+- **Searching a PDF.** Type in **Find in this PDF**: matches are highlighted on the pages, starting from the page you are reading. **Enter** and **Shift+Enter** (or **‹** / **›**) move between them. Search ignores case and accents ("coracao" finds "Coração") and finds words hyphenated across a line break. The text is read in the background the first time a PDF is opened and kept in the app's data folder (`~/.local/share/quillwright/text-cache` on Linux), never in the project.
 - **Read only.** The panel never changes a file. Text and Markdown files have an **Edit** button that opens them in the editor. If a file changes on disk, the panel shows the new version.
 - **View → Reference Panel** shows or hides the panel again.
 
-Search inside PDFs and across the whole project is planned; see [docs/reference-material.md](docs/reference-material.md).
+Search across the whole project is planned; see [docs/reference-material.md](docs/reference-material.md).
 
 ## Spell checking
 
@@ -395,7 +396,7 @@ The live editor is a custom surface over the plain Markdown buffer, not a full r
 - Variable-font axes and switching font families without a restart are not supported.
 - Paragraph dimming only applies while the page has keyboard focus.
 - Spell checking has no grammar checking, and the underline is straight rather than wavy. Suggestions for languages with complex compound words can be weaker than in LibreOffice.
-- The Reference panel can't search PDFs yet or open password-protected ones, and a few rare PDF features (such as some blend modes) are not drawn. Images and PDF pages larger than 4096 pixels are shown scaled down.
+- The Reference panel can't open password-protected PDFs, and a few rare PDF features (such as some blend modes) are not drawn. Scanned PDFs without a text layer can be read but not searched, and text in unusual layouts (columns, rotated text) may be found in a different reading order. Images and PDF pages larger than 4096 pixels are shown scaled down.
 - Version history only covers files open in Quillwright. Changes an agent makes to other files are not copied, and renaming a file starts a new history for it.
 
 ## Tech stack
