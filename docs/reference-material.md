@@ -4,8 +4,8 @@ Writers keep research next to the book: PDFs of articles and books, photos, maps
 notes, plain-text clippings. This document describes how Quillwright shows that material
 **beside** the manuscript, and how it will become searchable.
 
-Status: step 1 (research folder, text and image viewer) is implemented. Steps 2 to 5 are
-planned.
+Status: steps 1 (research folder, text and image viewer) and 2 (PDF viewer) are
+implemented. Steps 3 to 5 are planned.
 
 ## Principles
 
@@ -29,7 +29,9 @@ the pattern of the assistant and export:
 
 | Piece | Role |
 | --- | --- |
-| `src/reference.rs` | `Kind` (by extension), loading a file into a `Content` on a background thread, copying files into `research/` |
+| `src/reference/mod.rs` | `Kind` (by extension), loading a file into a `Content` on a background thread, copying files into `research/` |
+| `src/reference/pdf.rs` | `Document`: a render thread that owns the parsed PDF |
+| `src/pdf_view.rs` | The PDF viewer: stacked pages, page requests, textures, navigation, zoom |
 | `src/reference_ui.rs` | The Reference side panel, the sidebar's Research section actions, "Add Research Files…" |
 | `manuscript::Index::research` | Files under `research/` (recursive), sorted by path |
 
@@ -57,7 +59,22 @@ they changed (an agent may have added notes, for example).
 | `.txt` | Shown as wrapped, selectable text in the book font. |
 | `.md`, `.markdown` | Styled with `live_preview::project` without a caret, so all syntax is hidden. |
 | PNG, JPEG, GIF (first frame), WebP | Decoded by `image` on a background thread, scaled down to at most 4096 px, shown fitted to the panel width or at 100 %. |
-| PDF (step 2) | `hayro::render` rasterizes only the visible pages, on a background thread, at the screen's scale. A small LRU cache keeps textures for nearby pages. |
+| PDF | `hayro::render` rasterizes only the visible pages (plus one on each side), on a background thread, at the screen's scale. Textures are kept for pages near the current one. |
+
+### PDF rendering
+
+hayro's parsed document, pages, and render cache borrow each other and use `Rc`, so they
+cannot move between threads. `pdf::Document::open` starts a thread that reads and parses
+the file, reports the page sizes, and then waits for requests. Each frame the viewer
+computes which pages are visible and at what width in pixels (rounded up to 128 px, so
+small panel resizes reuse the textures), and calls `Document::exchange`: it returns the
+pages rendered since the last frame and replaces the list of wanted pages. Because the list
+is replaced, pages that scrolled out of view are dropped before they are rendered. While a
+new width is on its way, the old texture is shown scaled.
+
+hayro's default features embed the 14 standard PDF fonts and the CJK CMaps (about 600 KB),
+so PDFs that do not embed their fonts still show text. A panic inside hayro on one page is
+caught; that page shows "This page could not be shown" and the others keep working.
 
 hayro renders on the CPU, does not open password-protected PDFs, and still lacks a few rare
 features. Scanned PDFs have no text layer, so they can be viewed but not searched.
@@ -90,6 +107,7 @@ only suggests; nothing enters the manuscript unless the author accepts it.
 
 1. Research folder, sidebar section, Reference panel for text and images. **Done.**
 2. PDF viewer: background rendering, visible pages only, texture cache, page navigation.
+   **Done.**
 3. PDF text extraction, cache, and search in the open PDF with highlights.
 4. Project-wide search across the manuscript and research.
 5. "Use as Context" from references in the assistant.

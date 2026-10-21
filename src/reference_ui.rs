@@ -1,7 +1,9 @@
 //! The Reference side panel: research files shown read only beside the page.
 //! See docs/reference-material.md.
 use crate::{
-    fonts, live_preview, manuscript, process,
+    fonts, live_preview, manuscript,
+    pdf_view::PdfView,
+    process,
     reference::{self, Content, Kind, Loaded, Stamp},
     theme, DiscardAction, MarkdownApp,
 };
@@ -53,6 +55,7 @@ enum Shown {
     Text(String),
     Markdown(String),
     Image(TextureHandle),
+    Pdf(Box<PdfView>),
     Unsupported(String),
 }
 
@@ -103,10 +106,16 @@ impl MarkdownApp {
             return; // Another file was chosen meanwhile.
         }
         state.stamp = loaded.stamp;
+        // A reloaded PDF opens at the page the author was reading.
+        let page = match &state.shown {
+            Some(Shown::Pdf(view)) => view.current_page(),
+            _ => 0,
+        };
         match loaded.content {
             Ok(content) => {
                 state.error = None;
                 state.shown = Some(match content {
+                    Content::Pdf(doc) => Shown::Pdf(Box::new(PdfView::new(doc, page))),
                     Content::Text(text) => Shown::Text(text),
                     Content::Markdown(text) => Shown::Markdown(text),
                     Content::Image(image) => Shown::Image(ctx.load_texture(
@@ -272,13 +281,14 @@ impl MarkdownApp {
         p: &theme::Palette,
         action: &mut Option<PanelAction>,
     ) {
-        let state = &self.reference;
+        let state = &mut self.reference;
+        let fit = state.fit_width;
         if let Some(error) = &state.error {
             ui.add_space(8.0);
             ui.label(RichText::new(error).color(p.muted));
             return;
         }
-        let Some(shown) = &state.shown else {
+        let Some(shown) = &mut state.shown else {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 ui.spinner();
@@ -294,7 +304,7 @@ impl MarkdownApp {
                     .show(ui, |ui| {
                         ui.add(
                             egui::Label::new(
-                                RichText::new(text)
+                                RichText::new(text.as_str())
                                     .font(FontId::new(15.0, fonts::family(false, false)))
                                     .color(p.text),
                             )
@@ -315,7 +325,6 @@ impl MarkdownApp {
             }
             Shown::Image(texture) => {
                 let size = texture.size_vec2();
-                let fit = state.fit_width;
                 egui::ScrollArea::both()
                     .id_salt("reference_image")
                     .auto_shrink([false; 2])
@@ -344,9 +353,10 @@ impl MarkdownApp {
                         }
                     });
             }
+            Shown::Pdf(view) => view.show(ui, p),
             Shown::Unsupported(message) => {
                 ui.add_space(8.0);
-                ui.label(RichText::new(message).color(p.muted));
+                ui.label(RichText::new(message.as_str()).color(p.muted));
             }
         }
     }

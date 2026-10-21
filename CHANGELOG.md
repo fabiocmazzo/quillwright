@@ -8,8 +8,11 @@ All notable changes to Quillwright are listed here. Versions follow
 - **Research material.** A `research/` folder in the project is listed in the sidebar, and
   its files open read only in a new **Reference panel** beside the page: plain text,
   Markdown notes, and PNG, JPEG, GIF, and WebP images. **File → Add Research Files...**
-  copies files in without replacing any. Other files, PDFs included for now, open with the
-  system viewer. Images and PDFs in **All Files** open in the panel too.
+  copies files in without replacing any. Other files open with the system viewer. Images and PDFs in **All Files** open in the panel too.
+- **PDF viewer.** PDFs open in the Reference panel, rendered in pure Rust by hayro on a
+  background thread, one page at a time as you scroll. Jump to a page, zoom in and out,
+  and keep your page when the file changes on disk. Password-protected PDFs are not
+  supported yet.
 - The sidebar sorts names naturally: `note-2` comes before `note-10`, and chapters
   numbered without leading zeros (`1-`, `2-`, `10-`) are in reading order.
 - The sidebar's scroll bar no longer covers the **+** buttons.

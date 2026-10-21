@@ -14,6 +14,7 @@ mod fonts;
 mod history;
 mod live_preview;
 mod manuscript;
+mod pdf_view;
 mod process;
 mod project;
 mod reference;

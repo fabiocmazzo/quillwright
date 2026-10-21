@@ -50,7 +50,7 @@ yet.
 ```bash
 cargo run                                # debug build
 cargo run --release -- path/to/file.md   # open a file directly
-cargo test                               # 82 unit tests, about 1 s
+cargo test                               # 84 unit tests, about 1 s
 cargo fmt && cargo clippy --all-targets --locked -- -D warnings
 packaging/linux/build.sh 0.4.0           # AppImage + .tar.gz in dist/ (after a release build)
 packaging/linux/install-local.sh         # install the release build, menu entry, and icon in ~/.local
@@ -93,7 +93,9 @@ XDG_CONFIG_HOME=/tmp/qw/cfg XDG_DATA_HOME=/tmp/qw/data cargo run -- /tmp/qw/book
 | `src/export_ui.rs` | Export Manuscript window |
 | `src/spelling.rs` | Spell checking: finding and loading Hunspell dictionaries (spellbook), word tokenizing, the project's `dictionary.txt`, check cache, suggestions |
 | `src/spelling_ui.rs` | Editor right-click menu, View → Check Spelling / Spelling Language, refreshing the language and word list with the index |
-| `src/reference.rs` | Research files: kinds by extension, background loading (text, images), copying files into `research/` without overwriting |
+| `src/reference/mod.rs` | Research files: kinds by extension, background loading (text, images, PDFs), copying files into `research/` without overwriting |
+| `src/reference/pdf.rs` | PDF `Document`: a hayro render thread that owns the parsed file and renders requested pages |
+| `src/pdf_view.rs` | PDF viewer in the Reference panel: stacked pages, visible-page requests, texture cache, page jump, zoom |
 | `src/reference_ui.rs` | Reference side panel (read only), Add Research Files, `open_with_system` |
 | `src/theme.rs` | Paper / Sepia / Night palettes and egui styling |
 | `src/fonts.rs` | Bundled fonts (Literata, Atkinson Hyperlegible) and system font fallback |
@@ -194,7 +196,16 @@ reads text or decodes images (the `image` crate, with the same features typst en
 thread; `poll_reference` turns the result into a texture. `refresh_reference` runs after each
 index rebuild and reloads the file if its size or modification time changed, or closes the
 panel when another project is opened. In All Files, images and PDFs open in the panel. The
-design and next steps (PDF rendering with hayro, search) are in `docs/reference-material.md`.
+design and next steps (search) are in `docs/reference-material.md`.
+
+PDFs: hayro's parsed document and caches borrow each other and use `Rc`, so
+`reference::pdf::Document` keeps them on one thread for the life of the view. Each frame,
+`PdfView` lists the visible pages plus one on each side (`Key { page, width }`, the width
+rounded up to 128 px) and calls `Document::exchange`, which collects finished pages and
+*replaces* the request list, so pages that scrolled away are never rendered. Textures are
+kept within 6 pages of the current one. A hayro panic on one page is caught and that page
+shows a message. Remember to `request_repaint` when results arrive: the frame that receives
+them has already painted placeholders.
 
 ### Export
 
@@ -273,9 +284,9 @@ A longer-term idea, *project kinds* (Novel, Legal case, ...) sharing one core, i
 1. **Verify the 0.4.0 packages on real Windows and macOS machines.** Check the icon, the
    absence of a console window, file dialogs, the first-launch working folder (should be the
    home folder), exporting every format (PDF uses typst in-process), and running the assistant.
-2. **Reference material, steps 2 to 5** (`docs/reference-material.md`): PDF viewing with
-   hayro (already in the build through typst), PDF text extraction and search with
-   highlights, project-wide search, and "Use as Context" for the assistant.
+2. **Reference material, steps 3 to 5** (`docs/reference-material.md`): PDF text
+   extraction and search with highlights, project-wide search, and "Use as Context" for
+   the assistant.
 3. **Review agent changes (assistant "phase 2").** When an external change reloads the open
    chapter, highlight the changed passages and offer accept or revert per passage. The pieces
    exist: the history copy taken before reload (`reload_from_disk`), word diffs

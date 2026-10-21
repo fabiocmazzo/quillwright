@@ -1,0 +1,320 @@
+//! PDF pages rendered with hayro (pure Rust) on a background thread.
+//!
+//! hayro's document and caches borrow each other and use `Rc`, so one thread owns them
+//! for the life of the open document. The viewer tells it which pages it needs; the
+//! list is replaced every frame, so pages that scrolled away are never rendered.
+use eframe::egui::ColorImage;
+use hayro::{
+    hayro_interpret::InterpreterSettings,
+    hayro_syntax::{LoadPdfError, Pdf},
+    vello_cpu::color::palette::css::WHITE,
+    RenderCache, RenderSettings,
+};
+use std::{
+    fs,
+    panic::{self, AssertUnwindSafe},
+    path::Path,
+    sync::{mpsc, Arc, Condvar, Mutex, MutexGuard},
+    thread,
+};
+
+/// Rendered pages never exceed this many pixels on a side.
+pub const MAX_SIDE: u32 = 4096;
+
+/// A page rendered at a given width in pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Key {
+    pub page: usize,
+    pub width: u32,
+}
+
+pub struct Rendered {
+    pub key: Key,
+    /// None when the page could not be rendered.
+    pub image: Option<ColorImage>,
+}
+
+#[derive(Default)]
+struct State {
+    wanted: Vec<Key>,
+    current: Option<Key>,
+    finished: Vec<Rendered>,
+    closed: bool,
+}
+
+#[derive(Default)]
+struct Shared {
+    state: Mutex<State>,
+    wake: Condvar,
+}
+
+impl Shared {
+    fn lock(&self) -> MutexGuard<'_, State> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+/// An open PDF. Dropping it stops the render thread.
+pub struct Document {
+    /// Page sizes in points (rotation applied).
+    pages: Vec<[f32; 2]>,
+    shared: Arc<Shared>,
+}
+
+impl Document {
+    pub fn open(path: &Path) -> Result<Document, String> {
+        let data = fs::read(path).map_err(|e| e.to_string())?;
+        let shared = Arc::new(Shared::default());
+        let (ready_tx, ready_rx) = mpsc::sync_channel(1);
+        let thread_shared = shared.clone();
+        thread::Builder::new()
+            .name("pdf-render".into())
+            .spawn(move || run(data, &thread_shared, ready_tx))
+            .map_err(|e| e.to_string())?;
+        let pages = ready_rx
+            .recv()
+            .map_err(|_| "The PDF could not be read.".to_string())??;
+        Ok(Document { pages, shared })
+    }
+
+    pub fn page_sizes(&self) -> &[[f32; 2]] {
+        &self.pages
+    }
+
+    /// Collect finished pages and say which pages are still needed, most important
+    /// first. `wanted` sees the finished pages, so it can leave them out.
+    pub fn exchange(&self, wanted: impl FnOnce(&[Rendered]) -> Vec<Key>) -> Vec<Rendered> {
+        let mut state = self.shared.lock();
+        let finished = std::mem::take(&mut state.finished);
+        let current = state.current;
+        state.wanted = wanted(&finished)
+            .into_iter()
+            .filter(|key| Some(*key) != current)
+            .collect();
+        if !state.wanted.is_empty() {
+            self.shared.wake.notify_one();
+        }
+        finished
+    }
+
+    /// True while a page is being rendered or waiting to be.
+    pub fn busy(&self) -> bool {
+        let state = self.shared.lock();
+        state.current.is_some() || !state.wanted.is_empty() || !state.finished.is_empty()
+    }
+}
+
+impl Drop for Document {
+    fn drop(&mut self) {
+        self.shared.lock().closed = true;
+        self.shared.wake.notify_all();
+    }
+}
+
+fn run(data: Vec<u8>, shared: &Shared, ready: mpsc::SyncSender<Result<Vec<[f32; 2]>, String>>) {
+    let pdf = match Pdf::new(data) {
+        Ok(pdf) => pdf,
+        Err(error) => {
+            let _ = ready.send(Err(load_error(&error)));
+            return;
+        }
+    };
+    let pages = pdf.pages();
+    if pages.is_empty() {
+        let _ = ready.send(Err("This PDF has no pages.".into()));
+        return;
+    }
+    let sizes: Vec<[f32; 2]> = pages
+        .iter()
+        .map(|page| {
+            let (w, h) = page.render_dimensions();
+            [w.max(1.0), h.max(1.0)]
+        })
+        .collect();
+    if ready.send(Ok(sizes.clone())).is_err() {
+        return;
+    }
+    let settings = InterpreterSettings::default();
+    let mut cache = RenderCache::new();
+    loop {
+        let key = {
+            let mut state = shared.lock();
+            loop {
+                if state.closed {
+                    return;
+                }
+                if !state.wanted.is_empty() {
+                    let key = state.wanted.remove(0);
+                    state.current = Some(key);
+                    break key;
+                }
+                state = shared.wake.wait(state).unwrap_or_else(|e| e.into_inner());
+            }
+        };
+        let image = match pages.get(key.page) {
+            Some(page) => panic::catch_unwind(AssertUnwindSafe(|| {
+                render(page, &cache, &settings, key.width, sizes[key.page])
+            }))
+            .unwrap_or_else(|_| {
+                // A malformed page made hayro panic; start over with a clean cache.
+                cache = RenderCache::new();
+                None
+            }),
+            None => None,
+        };
+        let mut state = shared.lock();
+        state.finished.push(Rendered { key, image });
+        state.current = None;
+    }
+}
+
+fn render<'a>(
+    page: &'a hayro::hayro_syntax::page::Page<'a>,
+    cache: &RenderCache<'a>,
+    settings: &InterpreterSettings,
+    width: u32,
+    size: [f32; 2],
+) -> Option<ColorImage> {
+    let scale = (width.clamp(1, MAX_SIDE) as f32 / size[0]).min(MAX_SIDE as f32 / size[1]);
+    let pixmap = hayro::render(
+        page,
+        cache,
+        settings,
+        &RenderSettings {
+            x_scale: scale,
+            y_scale: scale,
+            bg_color: WHITE,
+            ..Default::default()
+        },
+    );
+    let (w, h) = (pixmap.width() as usize, pixmap.height() as usize);
+    if w == 0 || h == 0 {
+        return None;
+    }
+    // The background is opaque white, so premultiplied and straight alpha agree.
+    Some(ColorImage::from_rgba_premultiplied(
+        [w, h],
+        pixmap.data_as_u8_slice(),
+    ))
+}
+
+fn load_error(error: &LoadPdfError) -> String {
+    match error {
+        LoadPdfError::Decryption(_) => {
+            "This PDF is protected with a password, which Quillwright can't open yet.".into()
+        }
+        _ => "This file doesn't look like a PDF Quillwright can read.".into(),
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    /// A minimal PDF: `pages` pages of 200 × 100 pt, each with a black square in the middle.
+    pub(crate) fn sample_pdf(pages: usize) -> Vec<u8> {
+        let mut objects = vec![
+            "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+            format!(
+                "<< /Type /Pages /Kids [{}] /Count {pages} >>",
+                (0..pages)
+                    .map(|i| format!("{} 0 R", 4 + i))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
+        ];
+        let content = "0 0 0 rg 80 30 40 40 re f";
+        objects.push(format!(
+            "<< /Length {} >>\nstream\n{content}\nendstream",
+            content.len()
+        ));
+        for _ in 0..pages {
+            objects.push(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Contents 3 0 R >>".into(),
+            );
+        }
+        let mut out = b"%PDF-1.4\n".to_vec();
+        let mut offsets = Vec::new();
+        for (i, object) in objects.iter().enumerate() {
+            offsets.push(out.len());
+            out.extend(format!("{} 0 obj\n{object}\nendobj\n", i + 1).bytes());
+        }
+        let xref = out.len();
+        out.extend(format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).bytes());
+        for offset in offsets {
+            out.extend(format!("{offset:010} 00000 n \n").bytes());
+        }
+        out.extend(
+            format!(
+                "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+                objects.len() + 1
+            )
+            .bytes(),
+        );
+        out
+    }
+
+    fn wait_for(doc: &Document, wanted: Vec<Key>) -> Vec<Rendered> {
+        let mut done = Vec::new();
+        let start = Instant::now();
+        let mut first = true;
+        while start.elapsed() < Duration::from_secs(30) {
+            let missing: Vec<Key> = wanted
+                .iter()
+                .copied()
+                .filter(|k| !done.iter().any(|r: &Rendered| r.key == *k))
+                .collect();
+            if missing.is_empty() && !first {
+                return done;
+            }
+            first = false;
+            done.extend(doc.exchange(|finished| {
+                missing
+                    .into_iter()
+                    .filter(|k| !finished.iter().any(|r| r.key == *k))
+                    .collect()
+            }));
+            thread::sleep(Duration::from_millis(10));
+        }
+        panic!("pages were not rendered in time");
+    }
+
+    #[test]
+    fn opens_and_renders_pages_on_request() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("sample.pdf");
+        fs::write(&path, sample_pdf(3)).unwrap();
+        let doc = Document::open(&path).unwrap();
+        assert_eq!(doc.page_sizes(), &[[200.0, 100.0]; 3]);
+
+        let key = Key {
+            page: 2,
+            width: 400,
+        };
+        let done = wait_for(&doc, vec![key]);
+        let image = done[0].image.as_ref().expect("page 3 renders");
+        assert_eq!(image.size, [400, 200]);
+        let pixel = |x: usize, y: usize| image.pixels[y * 400 + x];
+        assert_eq!(pixel(5, 5), eframe::egui::Color32::WHITE);
+        assert_eq!(pixel(200, 100), eframe::egui::Color32::BLACK);
+
+        let missing = wait_for(
+            &doc,
+            vec![Key {
+                page: 9,
+                width: 100,
+            }],
+        );
+        assert!(missing[0].image.is_none());
+    }
+
+    #[test]
+    fn explains_files_that_are_not_pdfs() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("fake.pdf");
+        fs::write(&path, "hello").unwrap();
+        let error = Document::open(&path).err().unwrap();
+        assert!(error.contains("doesn't look like a PDF"), "{error}");
+    }
+}

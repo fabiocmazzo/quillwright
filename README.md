@@ -76,11 +76,12 @@ The last opened project is remembered between sessions.
 Keep the material you write from (articles, photos, maps, clippings, notes) in a `research/` folder inside the project. The sidebar lists it under **Research**, and a click opens the file in the **Reference panel** beside the page, so the chapter stays open while you read.
 
 - **Adding files.** Press **+** next to Research, or use **File → Add Research Files...**, to copy files into `research/`. A file with the same name is never replaced; the copy gets a number instead. You can also put files there with your file manager or an agent; subfolders are fine.
-- **What it shows.** Plain text (`.txt`), Markdown notes (styled, with the syntax hidden), and PNG, JPEG, GIF, and WebP images. Click an image to switch between fitting the panel and its actual size. Other files, including PDFs for now, have an **Open with System Viewer** button.
+- **What it shows.** PDFs, plain text (`.txt`), Markdown notes (styled, with the syntax hidden), and PNG, JPEG, GIF, and WebP images. Click an image to switch between fitting the panel and its actual size. Other files have an **Open with System Viewer** button.
+- **PDFs.** Pages are drawn by a built-in renderer, only as you scroll to them, so long books open quickly. Type a page number to jump there, and use **−** / **+** to zoom (click the percentage to fit the panel again). A PDF that changes on disk reopens at the page you were reading.
 - **Read only.** The panel never changes a file. Text and Markdown files have an **Edit** button that opens them in the editor. If a file changes on disk, the panel shows the new version.
 - **View → Reference Panel** shows or hides the panel again.
 
-PDF viewing and search across PDFs are planned; see [docs/reference-material.md](docs/reference-material.md).
+Search inside PDFs and across the whole project is planned; see [docs/reference-material.md](docs/reference-material.md).
 
 ## Spell checking
 
@@ -394,7 +395,7 @@ The live editor is a custom surface over the plain Markdown buffer, not a full r
 - Variable-font axes and switching font families without a restart are not supported.
 - Paragraph dimming only applies while the page has keyboard focus.
 - Spell checking has no grammar checking, and the underline is straight rather than wavy. Suggestions for languages with complex compound words can be weaker than in LibreOffice.
-- The Reference panel does not show PDFs yet, and images larger than 4096 pixels are shown scaled down.
+- The Reference panel can't search PDFs yet or open password-protected ones, and a few rare PDF features (such as some blend modes) are not drawn. Images and PDF pages larger than 4096 pixels are shown scaled down.
 - Version history only covers files open in Quillwright. Changes an agent makes to other files are not copied, and renaming a file starts a new history for it.
 
 ## Tech stack
