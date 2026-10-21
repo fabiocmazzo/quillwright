@@ -1,59 +1,64 @@
-//! Project kinds: what kind of writing a project holds (a novel, later a legal case, ...).
-//! Each kind is a folder in `assets/kinds/<id>/` with a `kind.toml` (folders, labels, the
-//! assistant's context files, actions, and prompts) and a `template/` copied by New
-//! Project. The kind is never stored in the writing project; it is inferred from the
-//! files there. See docs/project-kinds.md.
+//! Project kinds: what kind of writing a project holds (a novel, a legal case, ...).
+//! Each kind is a folder in `assets/kinds/<id>/`: a `kind.toml` with what all its
+//! languages share (labels, the assistant's context files, actions, and prompts), and one
+//! subfolder per language (`en/`, `pt-BR/`) with a `kind.toml` merged over it (folder and
+//! file names, detection) and the `template/` copied by New Project. The kind is never
+//! stored in the writing project; it is inferred from the files there.
+//! See docs/project-kinds.md.
 use serde::Deserialize;
 use std::{path::Path, sync::OnceLock};
 
-/// Built-in kinds: (id, kind.toml, template files as (relative path, contents)).
-/// The first one is the default for folders that match no kind.
-type Builtin = (
-    &'static str,
-    &'static str,
-    &'static [(&'static str, &'static str)],
-);
+// `KIND_FILES`: every file under assets/kinds, listed by build.rs.
+include!(concat!(env!("OUT_DIR"), "/kind_files.rs"));
 
-const BUILTIN: &[Builtin] = &[(
-    "novel",
-    include_str!("../assets/kinds/novel/kind.toml"),
-    &[
-        (
-            "AGENT.md",
-            include_str!("../assets/kinds/novel/template/AGENT.md"),
-        ),
-        (
-            "world-rules.md",
-            include_str!("../assets/kinds/novel/template/world-rules.md"),
-        ),
-        (
-            "characters/example-character.md",
-            include_str!("../assets/kinds/novel/template/characters/example-character.md"),
-        ),
-        (
-            "chapters/001-opening.md",
-            include_str!("../assets/kinds/novel/template/chapters/001-opening.md"),
-        ),
-    ],
-)];
+/// The kind used for folders that match no kind.
+const DEFAULT_KIND: &str = "novel";
+/// The language listed first, and used when a kind has several and none was chosen.
+const FIRST_LANGUAGE: &str = "en";
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct Kind {
     #[serde(skip)]
     pub id: String,
+    /// The language folder, such as `en` or `pt-BR`.
+    #[serde(skip)]
+    pub language: String,
+    /// The language as shown in New Project ("Português (Brasil)").
+    pub language_name: String,
     pub name: String,
     pub description: String,
     /// Relative paths whose presence marks a project of this kind ("dir/" for a folder).
     pub detect: Vec<String>,
     pub first_file: String,
     pub new_project_note: String,
+    pub research: Research,
     pub documents: Section,
     pub sheets: Section,
     pub assistant: Assistant,
     /// The template copied by New Project: (relative path, contents).
     #[serde(skip)]
     pub files: Vec<(String, String)>,
+}
+
+/// The folder of reference material (PDFs, images, notes), read only in the app.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct Research {
+    pub folder: String,
+    pub label: String,
+    /// Shown while the folder is empty.
+    pub hint: String,
+}
+
+impl Default for Research {
+    fn default() -> Self {
+        Research {
+            folder: "research".into(),
+            label: "Research".into(),
+            hint: "PDFs, images, and notes — press + to add.".into(),
+        }
+    }
 }
 
 /// A folder of Markdown files shown as one sidebar section.
@@ -91,6 +96,8 @@ pub struct Assistant {
     pub reference_note: String,
     pub context: Vec<ContextFile>,
     pub actions: Vec<Action>,
+    /// Placeholder of the instruction box.
+    pub ask_hint: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -156,32 +163,105 @@ pub fn capitalize(word: &str) -> String {
         .unwrap_or_default()
 }
 
-fn parse(id: &str, toml_text: &str, files: &[(&str, &str)]) -> Result<Kind, String> {
-    let mut kind: Kind = toml::from_str(toml_text).map_err(|e| format!("kind {id}: {e}"))?;
-    kind.id = id.to_string();
-    kind.files = files
-        .iter()
-        .map(|(path, text)| (path.to_string(), text.to_string()))
-        .collect();
-    Ok(kind)
+/// Merge `over` into `base`: tables merge key by key, anything else is replaced.
+fn merge(base: &mut toml::Table, over: toml::Table) {
+    for (key, value) in over {
+        match (base.get_mut(&key), value) {
+            (Some(toml::Value::Table(inner)), toml::Value::Table(value)) => merge(inner, value),
+            (_, value) => {
+                base.insert(key, value);
+            }
+        }
+    }
 }
 
-/// Every known kind; the first is the default.
+/// Build every (kind, language) from `files`: (path under assets/kinds, contents).
+fn load(files: &[(&str, &str)]) -> Result<Vec<Kind>, String> {
+    let file = |path: &str| files.iter().find(|(p, _)| *p == path).map(|(_, t)| *t);
+    let parse = |path: &str| -> Result<toml::Table, String> {
+        let text = file(path).ok_or_else(|| format!("{path} is missing"))?;
+        text.parse::<toml::Table>()
+            .map_err(|e| format!("{path}: {e}"))
+    };
+    let mut ids: Vec<&str> = files
+        .iter()
+        .filter_map(|(path, _)| path.strip_suffix("/kind.toml"))
+        .filter(|id| !id.contains('/'))
+        .collect();
+    ids.sort_by_key(|id| (*id != DEFAULT_KIND, *id));
+    let mut kinds = Vec::new();
+    for id in ids {
+        let base = parse(&format!("{id}/kind.toml"))?;
+        let mut languages: Vec<&str> = files
+            .iter()
+            .filter_map(|(path, _)| path.strip_prefix(id)?.strip_prefix('/'))
+            .filter_map(|rest| rest.strip_suffix("/kind.toml"))
+            .filter(|lang| !lang.contains('/'))
+            .collect();
+        languages.sort_by_key(|lang| (*lang != FIRST_LANGUAGE, *lang));
+        if languages.is_empty() {
+            return Err(format!("kind {id} has no language folder"));
+        }
+        for language in languages {
+            let mut table = base.clone();
+            merge(&mut table, parse(&format!("{id}/{language}/kind.toml"))?);
+            let mut kind: Kind = table
+                .try_into()
+                .map_err(|e| format!("kind {id} ({language}): {e}"))?;
+            kind.id = id.to_string();
+            kind.language = language.to_string();
+            let template = format!("{id}/{language}/template/");
+            kind.files = files
+                .iter()
+                .filter_map(|(path, text)| {
+                    Some((path.strip_prefix(&template)?.to_string(), text.to_string()))
+                })
+                .collect();
+            kinds.push(kind);
+        }
+    }
+    Ok(kinds)
+}
+
+/// Every known kind, once per language. The default kind comes first, and each kind's
+/// English variant before its other languages.
 pub fn all() -> &'static [Kind] {
     static KINDS: OnceLock<Vec<Kind>> = OnceLock::new();
-    KINDS.get_or_init(|| {
-        BUILTIN
-            .iter()
-            .map(|(id, toml_text, files)| {
-                // Built-in kinds are checked by the tests, so this cannot fail at run time.
-                parse(id, toml_text, files).expect("built-in project kind")
-            })
-            .collect()
-    })
+    // Built-in kinds are checked by the tests, so this cannot fail at run time.
+    KINDS.get_or_init(|| load(KIND_FILES).expect("built-in project kinds"))
 }
 
 pub fn default_kind() -> &'static Kind {
     &all()[0]
+}
+
+/// The kinds as offered by New Project: the first language variant of each.
+pub fn choices() -> Vec<&'static Kind> {
+    let mut seen = Vec::new();
+    all()
+        .iter()
+        .filter(|kind| {
+            let new = !seen.contains(&&kind.id);
+            seen.push(&kind.id);
+            new
+        })
+        .collect()
+}
+
+/// The languages of the kind `id`.
+pub fn languages(id: &str) -> Vec<&'static Kind> {
+    all().iter().filter(|kind| kind.id == id).collect()
+}
+
+/// The kind `id` in `language`, or its first language.
+pub fn find(id: &str, language: &str) -> &'static Kind {
+    let variants = languages(id);
+    variants
+        .iter()
+        .find(|kind| kind.language == language)
+        .or(variants.first())
+        .copied()
+        .unwrap_or_else(default_kind)
 }
 
 /// The kind of the project at `root`: the first whose `detect` paths exist there, or
@@ -218,11 +298,15 @@ mod tests {
 
     #[test]
     fn builtin_kinds_load_and_are_complete() {
-        assert_eq!(all()[0].id, "novel");
+        assert_eq!(all()[0].id, DEFAULT_KIND);
+        assert_eq!(all()[0].language, FIRST_LANGUAGE);
         for kind in all() {
-            let id = &kind.id;
+            let id = format!("{} ({})", kind.id, kind.language);
             assert!(!kind.name.is_empty(), "{id}: name");
+            assert!(!kind.language_name.is_empty(), "{id}: language_name");
+            assert!(!kind.detect.is_empty(), "{id}: detect");
             assert!(kind.file(&kind.first_file).is_some(), "{id}: first_file");
+            assert!(!kind.research.folder.is_empty(), "{id}: research");
             for section in [&kind.documents, &kind.sheets] {
                 assert!(!section.folder.is_empty(), "{id}: folder");
                 assert!(!section.singular.is_empty() && !section.plural.is_empty());
@@ -230,7 +314,16 @@ mod tests {
                     assert!(kind.file(template).is_some(), "{id}: {template}");
                 }
             }
+            assert!(
+                kind.file(&kind.assistant.guide).is_some(),
+                "{id}: the guide is in the template"
+            );
+            for file in &kind.assistant.context {
+                assert!(kind.file(&file.file).is_some(), "{id}: {}", file.file);
+                assert!(file.limit > 0, "{id}: {} limit", file.file);
+            }
             assert!(!kind.assistant.preamble.is_empty(), "{id}: preamble");
+            assert!(!kind.assistant.ask_hint.is_empty(), "{id}: ask_hint");
             for action in &kind.assistant.actions {
                 assert!(!action.label.is_empty() && !action.task.is_empty());
                 assert!(!action.output.is_empty(), "{id}: {}", action.label);
@@ -238,16 +331,45 @@ mod tests {
                     assert!(action.needs_selection, "{id}: {}", action.label);
                 }
             }
-            // Template files are listed in the embedded table with the paths New Project
-            // writes; each must exist in the kind's template folder.
-            let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("assets/kinds")
-                .join(id)
-                .join("template");
-            for (path, text) in &kind.files {
-                assert_eq!(&std::fs::read_to_string(dir.join(path)).unwrap(), text);
-            }
+            // A new project of this kind is recognized as this kind.
+            let temp = tempfile::tempdir().unwrap();
+            let root = crate::project::create(&temp.path().join("p"), kind).unwrap();
+            let found = detect(&root);
+            assert_eq!((&found.id, &found.language), (&kind.id, &kind.language));
         }
+        // Every kind is offered in English.
+        for kind in choices() {
+            assert_eq!(kind.language, FIRST_LANGUAGE, "{}", kind.id);
+        }
+    }
+
+    #[test]
+    fn language_files_are_merged_over_the_kind() {
+        let files = [
+            (
+                "k/kind.toml",
+                "name = \"K\"\ndetect = [\"a/\"]\n[documents]\nfolder = \"a\"\nlabel = \"Docs\"\n",
+            ),
+            ("k/en/kind.toml", "language_name = \"English\""),
+            (
+                "k/pt-BR/kind.toml",
+                "language_name = \"Português\"\ndetect = [\"b/\"]\n[documents]\nfolder = \"b\"\n",
+            ),
+            ("k/pt-BR/template/b/1.md", "# Um"),
+        ];
+        let kinds = load(&files).unwrap();
+        assert_eq!(kinds.len(), 2);
+        let (en, pt) = (&kinds[0], &kinds[1]);
+        assert_eq!(
+            (en.language.as_str(), pt.language.as_str()),
+            ("en", "pt-BR")
+        );
+        assert_eq!(pt.documents.folder, "b");
+        assert_eq!(pt.documents.label, "Docs"); // Kept from the shared file.
+        assert_eq!(pt.detect, ["b/"]); // Lists are replaced, not appended.
+        assert_eq!(pt.file("b/1.md"), Some("# Um"));
+        assert!(en.files.is_empty());
+        assert!(load(&[("k/kind.toml", "name = \"K\"")]).is_err());
     }
 
     #[test]

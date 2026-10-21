@@ -957,7 +957,40 @@ impl MarkdownApp {
                         dialog.error = None;
                     }
                 }
-                ui.label(kinds::default_kind().new_project_note.as_str());
+                ui.add_space(6.0);
+                ui.label("Kind of project");
+                for choice in kinds::choices() {
+                    let selected = dialog.kind.id == choice.id;
+                    if ui
+                        .radio(selected, choice.name.as_str())
+                        .on_hover_text(choice.description.as_str())
+                        .clicked()
+                        && !selected
+                    {
+                        // Keep the language when the new kind has it.
+                        dialog.kind = kinds::find(&choice.id, &dialog.kind.language);
+                    }
+                }
+                let languages = kinds::languages(&dialog.kind.id);
+                if languages.len() > 1 {
+                    ui.add_space(4.0);
+                    ui.label("Language of the template");
+                    ui.horizontal_wrapped(|ui| {
+                        for variant in languages {
+                            let selected = dialog.kind.language == variant.language;
+                            if ui.radio(selected, variant.language_name.as_str()).clicked() {
+                                dialog.kind = variant;
+                            }
+                        }
+                    });
+                }
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new(dialog.kind.description.as_str())
+                        .italics()
+                        .weak(),
+                );
+                ui.label(dialog.kind.new_project_note.as_str());
                 ui.label("Templates are optional. Existing folders will not be overwritten.");
                 if let Some(error) = &dialog.error {
                     ui.colored_label(ui.visuals().error_fg_color, error);
@@ -1809,10 +1842,14 @@ impl MarkdownApp {
                 self.open_file_from_path(&path);
             }
             DiscardAction::CreateProject(path) => {
-                match project::create(&path, kinds::default_kind()) {
+                let kind = self
+                    .new_project
+                    .as_ref()
+                    .map_or_else(kinds::default_kind, |dialog| dialog.kind);
+                match project::create(&path, kind) {
                     Ok(root) => {
                         self.activate_project(root.clone());
-                        self.open_file_from_path(&root.join(&kinds::default_kind().first_file));
+                        self.open_file_from_path(&root.join(&kind.first_file));
                         self.new_project = None;
                     }
                     Err(err) => {

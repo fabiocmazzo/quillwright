@@ -29,7 +29,7 @@ Your work is never locked into a proprietary format. Everything is plain UTF-8 M
 
 ## Highlights
 
-- **Writing projects.** *New Project* creates a ready-to-use structure for a book — chapters, character sheets, world rules, and an `AGENT.md` guide for AI collaborators. *Open Project* opens any existing folder as-is.
+- **Writing projects.** *New Project* creates a ready-to-use structure for a book — chapters, character sheets, world rules, and an `AGENT.md` guide for AI collaborators — or for a legal case (filings, parties, facts, evidence), in English or Portuguese. *Open Project* opens any existing folder as-is.
 - **Manuscript sidebar.** Chapters are listed in reading order by their real titles, with word counts. Below them, an outline of the current chapter's headings (click to jump), the characters, and project notes. **+** buttons create the next numbered chapter or a new character sheet. The full file tree is still one click away.
 - **A page, not a text box.** Live Markdown styling with a serif typeface (Literata by default) on a centered column. Markdown syntax is hidden except on the line you are editing. Scene breaks (`***`, `---`) are drawn as a centered ⁂.
 - **Writing themes.** *Paper* (warm light), *Sepia*, and *Night* (soft dark), switchable from **View → Theme**. The page is set apart from the "desk" around it.
@@ -49,7 +49,7 @@ Your work is never locked into a proprietary format. Everything is plain UTF-8 M
 
 ## A writing project
 
-**File → New Project...** asks for a folder name and a parent directory, then creates:
+**File → New Project...** asks for a folder name, a parent directory, and the kind of project: a **Novel** (below) or a **Legal case** (see [Legal cases](#legal-cases)). A novel creates:
 
 ```text
 my-novel/
@@ -70,6 +70,32 @@ Chapter titles come from each file's first heading, so renaming a chapter is jus
 The starter files are templates with empty fields, not story content. Everything can be renamed, reorganized, or deleted: there is no manifest, database, or required metadata. Existing folders are never overwritten, and *Open Project* never adds or moves files.
 
 The last opened project is remembered between sessions.
+
+### Legal cases
+
+A *Legal case* project holds the filings of one case, with its facts and evidence. Its template comes in **English** or **Portuguese (Brazil)**; New Project asks which. The Portuguese one creates:
+
+```text
+caso/
+├── AGENT.md                  # Rules for AI agents: never invent facts or citations, splitting court PDFs
+├── fatos.md                  # The facts, each with its evidence (the source of truth)
+├── cronologia.md             # Dated events
+├── provas.md                 # Exhibits: number, description, file, pages
+├── perguntas-ao-cliente.md   # Questions for the client, answers, dates
+├── metadata.yaml             # lang: pt-BR (spell checking and export)
+├── pecas/
+│   └── 001-peticao-inicial.md
+└── partes/
+    └── cliente.md            # Party sheet template
+```
+
+The English template uses `filings/`, `parties/`, `facts.md`, `timeline.md`, `evidence.md`, and `client-questions.md`. Court records and exhibits go in `autos/` (or `case-files/`), shown as **Case Files** in the sidebar and opened in the Reference panel.
+
+The sidebar shows **Filings** and **Parties**, and the assistant offers **Rewrite selection**, **Draft from facts**, **Check against facts**, and **Questions for the client**. Every request sends the facts, timeline, evidence list, and client questions, plus the sheets of the parties named in the filing. The assistant is told never to invent facts, statutes, case law, or citations, and to mark what is missing as `[TO CONFIRM: …]`.
+
+The `AGENT.md` guide also tells agents how to handle the huge PDFs downloaded from court systems: split them into parts named by page range, check that the parts add up to every page of the original, and only then delete the original, recording the ranges in the evidence list.
+
+Quillwright recognizes the kind of an existing folder from its files (`pecas/` or `fatos.md` means a legal case in Portuguese), so there is nothing to configure. Export is still the same as for a novel (the whole project, A5 by default); exporting one filing at a time is planned.
 
 ## Research material
 

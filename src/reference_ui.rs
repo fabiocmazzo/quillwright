@@ -1,7 +1,7 @@
 //! The Reference side panel: research files shown read only beside the page.
 //! See docs/reference-material.md.
 use crate::{
-    fonts, live_preview, manuscript,
+    fonts, live_preview,
     pdf_view::PdfView,
     process,
     reference::{self, Content, Kind, Loaded, Stamp},
@@ -185,7 +185,7 @@ impl MarkdownApp {
         else {
             return;
         };
-        let dir = self.working_dir.join(manuscript::RESEARCH_DIR);
+        let dir = self.working_dir.join(&self.kind.research.folder);
         match reference::add_files(&dir, &files) {
             Ok(added) => {
                 self.index_dirty = true;

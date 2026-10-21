@@ -1,0 +1,46 @@
+# The Brazilian Portuguese variant of the Legal case kind. Values here are merged over
+# ../kind.toml. The app's own labels stay in English; the files and folders it creates
+# have Portuguese names and Portuguese text.
+language_name = "Português (Brasil)"
+# A project with any of these is a legal case in Portuguese.
+detect = ["pecas/", "partes/", "fatos.md"]
+first_file = "pecas/001-peticao-inicial.md"
+new_project_note = "Creates pecas/, partes/, fatos.md, cronologia.md, provas.md, perguntas-ao-cliente.md, metadata.yaml and AGENT.md."
+
+[research]
+folder = "autos"
+
+[documents]
+folder = "pecas"
+new_name = "peca-{n}"
+new_title = "Peça {n}"
+
+[sheets]
+folder = "partes"
+new_name = "nova-parte"
+new_title = "Nova parte"
+template = "partes/cliente.md"
+
+[[assistant.context]]
+file = "fatos.md"
+heading = "Facts"
+summary = "facts"
+limit = 40000
+
+[[assistant.context]]
+file = "cronologia.md"
+heading = "Timeline"
+summary = "timeline"
+limit = 16000
+
+[[assistant.context]]
+file = "provas.md"
+heading = "Evidence"
+summary = "evidence list"
+limit = 16000
+
+[[assistant.context]]
+file = "perguntas-ao-cliente.md"
+heading = "Client questions"
+summary = "client questions"
+limit = 12000

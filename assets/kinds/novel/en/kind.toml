@@ -1,0 +1,2 @@
+# The English variant of the Novel kind. Values here are merged over ../kind.toml.
+language_name = "English"

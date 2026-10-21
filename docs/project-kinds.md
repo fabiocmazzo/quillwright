@@ -1,8 +1,9 @@
 # Project kinds: one core, several kinds of writing
 
-Status: design agreed in October 2026. Phase 1 (the Novel kind described by a `kind.toml`,
-with no visible change) is done; the prompts it builds were checked to be identical to the
-ones built before.
+Status (October 2026): the Novel kind is described by a `kind.toml` (with no visible change;
+its prompts were checked to be identical to the ones built before), and a Legal case kind
+exists in English and Portuguese (Brazil), chosen in New Project. Export per kind, user
+kinds, and a lawyer's feedback are next.
 
 ## Why
 
@@ -49,8 +50,9 @@ These parts already work for any kind of writing:
 
 | Aspect | Novel (today) | Legal case |
 | --- | --- | --- |
-| Main documents | `chapters/` ("Chapters", "New chapter") | `pieces/` ("Documents", "New document") |
-| Entity sheets | `characters/` ("Characters") | `parties/` ("Parties": client, opposing party, witnesses, judge) |
+| Main documents | `chapters/` ("Chapters", "New chapter") | `filings/` or `pecas/` ("Filings", "New filing") |
+| Entity sheets | `characters/` ("Characters") | `parties/` or `partes/` ("Parties": client, opposing party, witnesses, judge) |
+| Research | `research/` ("Research") | `case-files/` or `autos/` ("Case Files": the court record, exhibits) |
 | Guide for agents | `AGENT.md` (voice, style, rules for agents) | `AGENT.md` (office style, citation format, tone, "never state a fact without its evidence") |
 | Source of truth | `world-rules.md` | `facts.md` (facts, each with its evidence) and `timeline.md` |
 | Extra files | — | `client-questions.md` (asked and answered), `evidence.md` (index of exhibits) |
@@ -60,12 +62,13 @@ These parts already work for any kind of writing:
 | Typography | Indented paragraphs, no space between them | Paragraph spacing, justified text, numbered headings |
 | Word counts | Session and manuscript goals | Less relevant; page count matters more (court page limits) |
 
-The table is a starting point. The legal column should be checked with a practising lawyer
-before any code is written.
+The legal column is implemented except export, which is still the novel's. It should be
+checked with a practising lawyer.
 
 ## The legal case kind in more detail
 
-A possible folder layout:
+The English template (the Portuguese one uses `pecas/`, `partes/`, `autos/`, `fatos.md`,
+`cronologia.md`, `provas.md`, and `perguntas-ao-cliente.md`):
 
 ```text
 smith-v-acme/
@@ -73,19 +76,25 @@ smith-v-acme/
 ├── facts.md               # the facts of the case, each with its evidence
 ├── timeline.md            # dated events
 ├── client-questions.md    # questions asked, answers received, date
-├── evidence.md            # exhibit list: number, description, file
+├── evidence.md            # exhibit list: number, description, file, pages
 ├── parties/
-│   ├── client.md
-│   └── opposing-party.md
-├── pieces/
-│   ├── 001-initial-petition.md
-│   ├── 002-reply.md
-│   └── 003-closing-arguments.md
-├── exhibits/              # PDFs and images, referenced from evidence.md
-└── reference.docx         # the office template (letterhead, fonts)
+│   └── client.md
+├── filings/
+│   └── 001-complaint.md
+├── case-files/            # the court record and exhibits (created when files are added)
+└── reference.docx         # optional: the office template (letterhead, fonts)
 ```
 
-What the assistant would add:
+The `AGENT.md` sets the rules for agents: never invent facts, statutes, case law, or
+citations; every fact needs its evidence; quote the record exactly; keep the files
+consistent; confidentiality. It also covers **large PDFs from court systems**, which are
+often single files of thousands of pages: agents may split them into parts named by page
+range, must check that the parts add up to every page of the original (page counts, and the
+first and last page of each part), may delete the original only after that check and only
+when the lawyer asked for the split, and record the ranges in the evidence list so that
+citations to the original pages stay valid.
+
+What the assistant adds (all but the second exist):
 
 - **Check against facts:** compares the open document with `facts.md` and `timeline.md` and
   lists statements that are missing, contradicted, or have no evidence. This is the legal
@@ -120,28 +129,49 @@ What the assistant would add:
 
 ## Kinds are folders, like themes
 
-Each kind is a folder with a `kind.toml` and a `template/` folder. The TOML describes
-everything the app needs to know about the kind; the template is copied by New Project.
-Adding a kind is then content work (Markdown and TOML), not code.
+Each kind is a folder with a shared `kind.toml` and one folder per language. Each language
+folder has its own `kind.toml`, merged over the shared one, and a `template/` folder that
+New Project copies. Adding a kind or a language is content work (Markdown and TOML), not
+code: `build.rs` lists every file under `assets/kinds/` and the app embeds them.
 
 ```text
 assets/kinds/                    # built-in kinds, embedded in the executable
 ├── novel/
-│   ├── kind.toml
-│   └── template/                # copied as-is by New Project
-│       ├── AGENT.md
-│       ├── world-rules.md
-│       ├── chapters/001-opening.md
-│       └── characters/example-character.md
-└── legal/                       # later
+│   ├── kind.toml                # shared: labels, assistant prompts and actions
+│   └── en/
+│       ├── kind.toml            # language_name = "English"
+│       └── template/            # copied as-is by New Project
+│           ├── AGENT.md
+│           ├── world-rules.md
+│           ├── chapters/001-opening.md
+│           └── characters/example-character.md
+└── legal/
     ├── kind.toml
-    └── template/
-        ├── AGENT.md
-        ├── facts.md
-        ├── timeline.md
-        ├── parties/client.md
-        └── pieces/001-initial-petition.md
+    ├── en/
+    │   ├── kind.toml            # folders filings/, parties/, case-files/; facts.md, ...
+    │   └── template/
+    └── pt-BR/
+        ├── kind.toml            # folders pecas/, partes/, autos/; fatos.md, ...
+        └── template/            # includes metadata.yaml with lang: pt-BR
 ```
+
+### Languages
+
+A language folder holds what changes with the language of the project: its
+`language_name` (shown in New Project), the names of the folders and files it creates
+(`detect`, `first_file`, `[documents]`, `[sheets]`, `[research]` folders, the
+`[[assistant.context]]` files), and its template. Merging works table by table; any other
+value, including a list, is replaced as a whole.
+
+When a kind has more than one language, New Project asks which one; otherwise it does not.
+The `en` variant is listed first and is required for every built-in kind.
+
+What stays in English in every language: the app's own labels ("Filings", "New filing",
+"Check against facts"), as the ground rules require for UI text, and the assistant's
+prompts. The prompts tell the model to write in the language of the documents, which
+works for any language, and keep one set of prompts per kind to maintain. A language may
+still override any value, so translated prompts are possible if they turn out to work
+better.
 
 Later, kinds can also be read from the user data folder
 (`<data dir>/quillwright/kinds/<id>/`, the same place as extra dictionaries), so an office
@@ -209,8 +239,9 @@ added later.
 
 ### Code
 
-- `src/kinds.rs`: `Kind` (deserialized from `kind.toml`), its template files, `builtin()`,
-  and `detect(root)`. The built-in files are embedded with `include_str!`.
+- `src/kinds.rs`: `Kind` (one per kind and language, deserialized from the merged TOML),
+  its template files, `all()`, `choices()` and `languages(id)` for New Project, `find`, and
+  `detect(root)`. `build.rs` writes the list of embedded files (`$OUT_DIR/kind_files.rs`).
 - `manuscript::Index::build(root, kind)` reads the kind's documents and sheets folders
   instead of the constants `CHAPTERS_DIR` and `CHARACTERS_DIR`; `new_document` and
   `new_sheet` take their names and titles from the kind.
@@ -221,8 +252,9 @@ added later.
 - Export defaults (unit of export, page size, typography) stay in code until the Legal kind
   needs them. Also still novel-specific: export looks for images in `chapters/`, the
   keyboard shortcut list says "New chapter", and the home screen tagline speaks of stories.
-- New template files must also be listed in `kinds::BUILTIN` (they are embedded with
-  `include_str!`); a test checks that the embedded copies match the files on disk.
+- The test `builtin_kinds_load_and_are_complete` checks every kind and language: required
+  fields, that the template has every file the TOML names, and that a new project of the
+  variant is detected as that variant.
 
 Keep the Novel kind behaving exactly as today. The existing tests are the safety net, and
 the prompts built from `kind.toml` must be identical to the ones built before the change.
@@ -232,15 +264,20 @@ the prompts built from `kind.toml` must be identical to the ones built before th
 1. **The Novel kind as data.** Move the template to `assets/kinds/novel/`, describe it in
    `kind.toml`, and read folders, labels, context files, actions, and prompts from it. No
    visible change. **Done.**
-2. **Prototype the Legal kind without code:** a hand-written template (folders, `AGENT.md`,
-   `facts.md`) that a lawyer uses with the app for one or two weeks, noting which labels and
-   actions they miss.
-3. **Legal kind:** its `kind.toml` and template, a kind choice in New Project, and export
-   defaults per kind (one document at a time, A4, no title page).
-4. **User kinds** from the data folder.
-5. **Import from Word** (useful for every kind).
-6. **Confidentiality controls** for the assistant.
-7. Other kinds, if there is demand.
+2. **Legal kind, languages, and the kind choice in New Project.** English and Portuguese
+   (Brazil) templates; Filings, Parties, Case Files; the actions Draft from facts, Check
+   against facts, and Questions for the client. **Done.**
+3. **A lawyer's feedback:** use it on a real case for one or two weeks and note which
+   labels, files, and actions are missing or wrong.
+4. **Export per kind:** one filing at a time (or several joined), A4, no title page, no
+   page breaks between sections, justified paragraphs with spacing; images from the kind's
+   documents folder.
+5. **User kinds** from the data folder.
+6. **Import from Word** (useful for every kind).
+7. **Confidentiality controls** for the assistant.
+8. "Find contradictions with other filings": an action that sends the earlier filings
+   too, which needs a way to choose them and a larger context budget.
+9. Other kinds, if there is demand.
 
 ## Other kinds to consider later
 
@@ -259,13 +296,8 @@ the prompts built from `kind.toml` must be identical to the ones built before th
 
 ## Open questions
 
-- Language: the project template rules say English, but a kind for Brazilian lawyers would
-  read better with Portuguese file names and text (`fatos.md`, `pecas/`). Options: a
-  `template.pt-BR/` next to `template/`, or regional kinds as an explicit exception.
-- Should the legal kind use its own vocabulary or neutral words ("Documents", "People",
-  "Facts") that also suit other kinds?
-- Where do exhibits live, and how are they cited from documents (for example
-  `[Exhibit 3](exhibits/03-contract.pdf)`)?
+- How should filings link to exhibits (for example
+  `[Exhibit 3](case-files/03-contract.pdf)`), and should a click open the PDF at the page?
 - Should a case share an office-wide `AGENT.md` and `reference.docx` with other cases, for
   example in a parent folder? This affects how context files are found.
 - Is a page count (rather than a word count) needed in the status bar for court page limits?

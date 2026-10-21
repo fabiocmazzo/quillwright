@@ -11,6 +11,8 @@ use crate::kinds::Kind;
 pub struct NewProject {
     pub name: String,
     pub parent: PathBuf,
+    /// The kind and language chosen.
+    pub kind: &'static Kind,
     pub error: Option<String>,
 }
 

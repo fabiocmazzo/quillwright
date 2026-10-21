@@ -25,8 +25,10 @@ yet.
 
 ## Ground rules
 
-- **English only** in code, comments, UI text, docs, commit messages, and the project
-  templates (`assets/kinds/`). The author's *manuscript* can be in any language.
+- **English only** in code, comments, UI text (including the labels in `kind.toml`), docs,
+  and commit messages. Project templates are in English, and a kind may add other
+  languages as language folders (`assets/kinds/legal/pt-BR/`); every built-in kind must
+  have `en`. The author's *manuscript* can be in any language.
 - **Plain Markdown, no lock-in.** Never add a manifest, database, or hidden metadata to a
   writing project. Everything the app shows is derived from the files on disk.
 - **Never lose or silently overwrite the author's text.** Saves are atomic and refuse to
@@ -50,7 +52,7 @@ yet.
 ```bash
 cargo run                                # debug build
 cargo run --release -- path/to/file.md   # open a file directly
-cargo test                               # 95 unit tests, about 1 s
+cargo test                               # 97 unit tests, about 1 s
 cargo fmt && cargo clippy --all-targets --locked -- -D warnings
 packaging/linux/build.sh 0.4.0           # AppImage + .tar.gz in dist/ (after a release build)
 packaging/linux/install-local.sh         # install the release build, menu entry, and icon in ~/.local
@@ -77,7 +79,7 @@ XDG_CONFIG_HOME=/tmp/qw/cfg XDG_DATA_HOME=/tmp/qw/data cargo run -- /tmp/qw/book
 | `src/workspace.rs` | Menus, manuscript sidebar, status bar, home screen, the page, focus mode, keyboard shortcut list (`SHORTCUTS`) |
 | `src/editor.rs` | Custom editor: edits the Markdown *source* while displaying a styled *projection*; selection, undo, IME, navigation |
 | `src/live_preview.rs` | Builds the styled projection (hides syntax except on the active line) and maps display offsets to source offsets |
-| `src/kinds.rs` | Project kinds: `Kind` read from `assets/kinds/<id>/kind.toml` (folders, labels, assistant context files, actions, prompts), its embedded template, `detect` |
+| `src/kinds.rs` | Project kinds: `Kind` (one per kind and language) from `assets/kinds/<id>/kind.toml` merged with `<id>/<lang>/kind.toml` (folders, labels, assistant context files, actions, prompts), its embedded template, `detect`, `choices`, `languages` |
 | `src/manuscript.rs` | Project index: the kind's documents (chapters) and sheets (characters), notes, titles, word counts, outline, new document/sheet files |
 | `src/project.rs` | New Project: copies the kind's template; opening folders |
 | `src/file_sync.rs` | Background file watcher (`notify` plus polling), reconciliation of disk vs editor, atomic checked writes, cursor mapping |
@@ -104,12 +106,12 @@ XDG_CONFIG_HOME=/tmp/qw/cfg XDG_DATA_HOME=/tmp/qw/data cargo run -- /tmp/qw/book
 | `src/theme.rs` | Paper / Sepia / Night palettes and egui styling |
 | `src/fonts.rs` | Bundled fonts (Literata, Atkinson Hyperlegible) and system font fallback |
 | `src/process.rs` | `command()`: `std::process::Command` without a console window on Windows |
-| `assets/kinds/<id>/` | A project kind: `kind.toml` and the `template/` copied by New Project (embedded with `include_str!`, listed in `kinds::BUILTIN`) |
+| `assets/kinds/<id>/` | A project kind (`novel`, `legal`): the shared `kind.toml`, and per language (`en/`, `pt-BR/`) a `kind.toml` and the `template/` copied by New Project. Everything here is embedded (see `build.rs`) |
 | `assets/fonts/`, `assets/icon/` | Embedded fonts and the app icon (SVG source plus generated PNG/ICO) |
 | `assets/dictionaries/` | The bundled en_US Hunspell dictionary (SCOWL, from LibreOffice) and its copyright notice |
 | `packaging/`, `.github/workflows/` | Release packaging scripts and CI / release workflows |
 | `docs/config.example.toml` | Documented example config; keep it in sync with the config structs |
-| `build.rs` | Embeds the icon in the Windows executable |
+| `build.rs` | Embeds the icon in the Windows executable; lists every file under `assets/kinds/` for `kinds.rs` to embed (`$OUT_DIR/kind_files.rs`) |
 
 ## Architecture
 
@@ -168,15 +170,20 @@ copies per file are kept.
 
 ### Project kinds
 
-A project's kind (only Novel so far) says which folders hold the main documents and the
-sheets, how the UI names them, and what the assistant sends and offers. It lives in
-`assets/kinds/<id>/kind.toml`, never in the writing project: `kinds::detect` picks the first
-kind whose `detect` paths exist, else the first built-in kind (Novel). `MarkdownApp.kind` is
+A project's kind (Novel, Legal case) says which folders hold the main documents, the sheets,
+and the research files, how the UI names them, and what the assistant sends and offers. It
+lives in the app, never in the writing project. `assets/kinds/<id>/kind.toml` holds what all
+languages share; each language folder (`en/`, `pt-BR/`) has a `kind.toml` merged over it
+(tables merge key by key, anything else is replaced, so a language redefines whole lists such
+as `detect` and `[[assistant.context]]`) and the `template/` that New Project copies.
+`build.rs` lists every file there, so adding a kind or language needs no code change.
+`kinds::all()` has one `Kind` per kind and language (Novel first, `en` first);
+`kinds::detect` picks the first whose `detect` paths exist, else Novel. `MarkdownApp.kind` is
 set with each index rebuild. `manuscript::Index` has `documents` and `sheets` (a novel's
-chapters and characters). New template files must be added to `kinds::BUILTIN`; a test checks
-that the embedded copies match the files on disk. Still novel-specific in code: export
-(images in `chapters/`, the whole book), the shortcut list, and the home screen tagline.
-Design and next phases: `docs/project-kinds.md`.
+chapters and characters). The test `builtin_kinds_load_and_are_complete` checks every
+variant, including that a new project of it is detected as itself. Still novel-specific in
+code: export (images in `chapters/`, the whole project, A5), the shortcut list, and the home
+screen tagline. Design and next phases: `docs/project-kinds.md`.
 
 ### Assistant
 
@@ -206,8 +213,8 @@ agents and Git); ignored words last for the session.
 
 ### Reference material
 
-Research files live in the project's `research/` folder (`manuscript::RESEARCH_DIR`;
-`Index::research` lists them recursively). They open in the Reference panel
+Research files live in the kind's research folder (`research/` for a novel, `autos/` or
+`case-files/` for a legal case; `Index::research` lists them recursively). They open in the Reference panel
 (`reference_ui::ReferenceState`), which is **read only** and separate from the edited
 document: nothing there goes through saving, autosave, or history. `reference::load_in_background`
 reads text or decodes images (the `image` crate, with the same features typst enables) on a
@@ -321,8 +328,9 @@ logs. Poll gently.
 Roughly in priority order. Each one should keep the ground rules above.
 
 *Project kinds* (Novel, Legal case, ...) sharing one core are described in
-`docs/project-kinds.md`. Phase 1 (Novel as `kind.toml`) is done; next is a hand-written
-Legal template tested by a lawyer, then the Legal kind with a kind choice in New Project.
+`docs/project-kinds.md`. Novel and Legal case (English and Portuguese) exist; next for the
+Legal kind: a lawyer's feedback on the template and actions, export of one filing at a time
+with A4 defaults, and import from Word.
 
 1. **Verify the 0.4.0 packages on real Windows and macOS machines.** Check the icon, the
    absence of a console window, file dialogs, the first-launch working folder (should be the

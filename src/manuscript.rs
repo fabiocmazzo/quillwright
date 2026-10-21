@@ -13,8 +13,6 @@ use std::{
 /// Where export looks for images, besides the project folder. The Novel kind's documents
 /// folder; export does not read the kind yet.
 pub const CHAPTERS_DIR: &str = "chapters";
-/// Reference material: PDFs, images, clippings. Read only in the app.
-pub const RESEARCH_DIR: &str = "research";
 
 /// Count prose words, ignoring Markdown punctuation and HTML comments.
 pub fn word_count(text: &str) -> usize {
@@ -122,7 +120,7 @@ impl Index {
     pub fn build(root: &Path, kind: &Kind) -> Self {
         let documents_dir = root.join(&kind.documents.folder);
         let sheets_dir = root.join(&kind.sheets.folder);
-        let research_dir = root.join(RESEARCH_DIR);
+        let research_dir = root.join(&kind.research.folder);
         let mut research = Vec::new();
         collect_files(&research_dir, 0, &mut research);
         research.sort_by(|a, b| natural_path_cmp(a, b));

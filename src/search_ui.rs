@@ -87,7 +87,7 @@ impl MarkdownApp {
         for entry in &index.notes {
             sources.push(source(&entry.path, &entry.title, SourceKind::Note, false));
         }
-        let research_dir = self.working_dir.join(crate::manuscript::RESEARCH_DIR);
+        let research_dir = self.working_dir.join(&self.kind.research.folder);
         for path in &index.research {
             let pdf = match reference::Kind::of(path) {
                 reference::Kind::Pdf => true,

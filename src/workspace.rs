@@ -286,6 +286,7 @@ impl MarkdownApp {
                 .filter(|_| self.index.has_documents_dir)
                 .map(Path::to_path_buf)
                 .unwrap_or_else(|| self.working_dir.clone()),
+            kind: crate::kinds::default_kind(),
             error: None,
         });
     }
@@ -491,13 +492,14 @@ impl MarkdownApp {
                         }
 
                         if self.in_project_for_research() {
-                            if section(ui, "Research", Some("Add research files"), &p) {
+                            let research = &kind.research;
+                            if section(ui, &research.label, Some("Add research files"), &p) {
                                 action = Some(NavAction::AddResearch);
                             }
                             if index.research.is_empty() {
-                                hint(ui, "PDFs, images, and notes — press + to add.", &p);
+                                hint(ui, &research.hint, &p);
                             }
-                            let research_dir = self.working_dir.join(manuscript::RESEARCH_DIR);
+                            let research_dir = self.working_dir.join(&research.folder);
                             let showing = self.reference.showing();
                             for path in &index.research {
                                 let label = path

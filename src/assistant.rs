@@ -865,4 +865,46 @@ mod tests {
         )
         .is_err());
     }
+
+    #[test]
+    fn legal_kind_sends_its_own_files_and_actions() {
+        let legal = kinds::find("legal", "pt-BR");
+        assert_eq!(legal.language, "pt-BR");
+        let temp = tempfile::tempdir().unwrap();
+        let root = crate::project::create(&temp.path().join("caso"), legal).unwrap();
+        std::fs::write(
+            root.join("fatos.md"),
+            "# Fatos\n\n1. Contrato assinado (doc. 1).",
+        )
+        .unwrap();
+        let sheets = vec![(root.join("partes/cliente.md"), "Ana Souza".to_string())];
+        let text = "Ana Souza firmou o contrato.";
+        let context = Context::gather(&root, legal, text, &sheets);
+        assert_eq!(
+            context.summary(),
+            "facts, timeline, evidence list, client questions, 1 party sheet, AGENT.md"
+        );
+        let action = legal
+            .assistant
+            .actions
+            .iter()
+            .find(|a| a.label == "Check against facts")
+            .unwrap();
+        let req = Request {
+            action: Action::Kind(action.clone()),
+            instruction: String::new(),
+            file: Some("pecas/001-peticao-inicial.md".into()),
+            chapter_title: "Petição inicial".into(),
+            start: 0,
+            end: 0,
+            selected: String::new(),
+        };
+        let prompt = build_prompt(&req, text, &context, legal);
+        assert!(prompt.contains("helping a lawyer"));
+        assert!(prompt.contains("# Facts (fatos.md)\n\n# Fatos"));
+        assert!(prompt.contains("# Party sheets\n\n## partes/cliente.md"));
+        assert!(prompt.contains("# Current filing: \"Petição inicial\""));
+        assert!(prompt.contains("<filing>\n⟦CURSOR⟧Ana Souza"));
+        assert!(!prompt.contains("fiction"));
+    }
 }

@@ -367,9 +367,7 @@ impl MarkdownApp {
         ui.add_space(6.0);
         let response = ui.add(
             egui::TextEdit::multiline(&mut self.assistant.instruction)
-                .hint_text(
-                    "Ask anything, or guide the buttons above (“more tension, shorter sentences”)",
-                )
+                .hint_text(self.kind.assistant.ask_hint.as_str())
                 .desired_rows(3)
                 .desired_width(f32::INFINITY),
         );

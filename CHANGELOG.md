@@ -23,6 +23,13 @@ All notable changes to Quillwright are listed here. Versions follow
 - **Research as assistant context.** Select a passage in the Reference panel (text,
   Markdown, or a PDF page, by dragging) and choose **Use as Context**: it goes to the
   assistant with its citation (`research/book.pdf, p. 42`) until you remove it.
+- **Legal case projects.** New Project can create a *Legal case*: filings, party sheets,
+  facts, timeline, evidence list, and client questions, with assistant actions to draft
+  from the facts, check a filing against them, and list questions for the client. The
+  template comes in English or Portuguese (Brazil). Its `AGENT.md` tells agents never to
+  invent facts or citations, and how to split huge court PDFs safely.
+- New Project asks for the kind of project and, when it has several, the language of the
+  template.
 - Internal: the novel layout (folders, sidebar labels, the assistant's context files,
   actions, and prompts) is now described in `assets/kinds/novel/kind.toml`, the first
   *project kind*. Nothing changes for novels; this prepares other kinds of writing.
