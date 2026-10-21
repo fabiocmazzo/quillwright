@@ -113,6 +113,7 @@ XDG_CONFIG_HOME=/tmp/qw/cfg XDG_DATA_HOME=/tmp/qw/data cargo run -- /tmp/qw/book
 | `assets/dictionaries/` | The bundled en_US Hunspell dictionary (SCOWL, from LibreOffice) and its copyright notice |
 | `packaging/`, `.github/workflows/` | Release packaging scripts and CI / release workflows. `packaging/linux/` has the `.desktop` and AppStream MetaInfo files, named after the app id |
 | `snap/` | The snap: `snapcraft.yaml` (classic, core24, bundled GTK and Mesa) and `local/launch`; built and smoke-tested by `.github/workflows/snap.yml` |
+| `site/` | The website (English, and Portuguese in `pt-br/`): static HTML and CSS, no JavaScript. `site/build.sh` adds the screenshots, icon, and fonts into `_site/`; `.github/workflows/pages.yml` publishes it to GitHub Pages. Keep its claims in step with the README |
 | `docs/config.example.toml` | Documented example config; keep it in sync with the config structs |
 | `build.rs` | Embeds the icon in the Windows executable; lists every file under `assets/kinds/` for `kinds.rs` to embed (`$OUT_DIR/kind_files.rs`) |
 

@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quillwright · Escreva com agentes de IA, e cada palavra continua sua</title>
+  <meta name="description" content="Quillwright é um app de escrita gratuito e de código aberto para romances e documentos longos. Seu livro é uma pasta de arquivos Markdown, e os agentes de IA que você já usa trabalham nela enquanto você escreve.">
+  <link rel="canonical" href="https://fabiocmazzo.github.io/quillwright/pt-br/">
+  <link rel="alternate" hreflang="en" href="https://fabiocmazzo.github.io/quillwright/">
+  <link rel="alternate" hreflang="pt-BR" href="https://fabiocmazzo.github.io/quillwright/pt-br/">
+  <link rel="alternate" hreflang="x-default" href="https://fabiocmazzo.github.io/quillwright/">
+  <link rel="icon" href="../img/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="../img/icon.png">
+  <meta name="theme-color" content="#fbf9f4" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#16171b" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:title" content="Quillwright">
+  <meta property="og:description" content="Um app de escrita gratuito e de código aberto para romances e documentos longos, feito para trabalhar ao lado de agentes de IA.">
+  <meta property="og:image" content="https://fabiocmazzo.github.io/quillwright/img/paper.png">
+  <meta property="og:url" content="https://fabiocmazzo.github.io/quillwright/pt-br/">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preload" href="../fonts/Literata-Regular.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <a class="skip" href="#main">Pular para o conteúdo</a>
+
+  <header class="wrap top">
+    <a class="brand" href="./"><img src="../img/icon.svg" alt="" width="32" height="32">Quillwright</a>
+    <nav class="nav" aria-label="Principal">
+      <a class="hide-sm" href="#recursos">Recursos</a>
+      <a class="hide-sm" href="#codigo-aberto">Código aberto</a>
+      <a class="hide-sm" href="#download">Download</a>
+      <a class="lang" href="../" hreflang="en" lang="en">English</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <div class="wrap hero">
+      <p class="eyebrow">Gratuito e de código aberto · licença MIT</p>
+      <h1>Um lugar tranquilo para escrever, <em>ao lado dos seus agentes de&nbsp;IA</em></h1>
+      <p class="lede">Quillwright é um app de escrita para romances e documentos longos. Seu livro é uma pasta de arquivos Markdown. As ferramentas de IA que você já usa trabalham nela enquanto você escreve, e nada entra no seu texto sem a sua aprovação.</p>
+      <div class="actions">
+        <a class="button primary" href="#download">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg>
+          Baixar grátis
+        </a>
+        <a class="button" href="https://github.com/fabiocmazzo/quillwright">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/></svg>
+          Código-fonte
+        </a>
+      </div>
+      <p class="platforms">Linux · Windows · macOS</p>
+    </div>
+
+    <div class="wrap shot">
+      <div class="window">
+        <div class="bar" aria-hidden="true"><span></span><span></span><span></span></div>
+        <picture>
+          <source srcset="../img/night.png" media="(prefers-color-scheme: dark)">
+          <img src="../img/paper.png" width="1000" height="680" alt="Quillwright: a lista de capítulos e o sumário na barra lateral, e o capítulo diagramado como uma página">
+        </picture>
+      </div>
+    </div>
+
+    <section class="tint">
+      <div class="wrap">
+        <div class="head">
+          <p class="kicker">Por que o Quillwright</p>
+          <h2>Feito para quem escreve com IA, não para a IA escrever no seu lugar.</h2>
+        </div>
+        <div class="reasons">
+          <div>
+            <span class="n">i.</span>
+            <h3>Seu livro continua seu</h3>
+            <p>Sem formato proprietário e sem nuvem. Um arquivo Markdown por capítulo e por personagem, que abre em qualquer editor, é fácil de copiar e funciona com Git.</p>
+          </div>
+          <div>
+            <span class="n">ii.</span>
+            <h3>Funciona com os agentes que você usa</h3>
+            <p>Claude Code, Codex ou um modelo local pelo Ollama. O Quillwright entende capítulos e personagens, e os agentes trabalham na mesma pasta que você.</p>
+          </div>
+          <div>
+            <span class="n">iii.</span>
+            <h3>Um app pequeno</h3>
+            <p>Um único programa nativo, escrito em Rust. Sem conta, sem assinatura, sem chaves de API. Exporta para Word, EPUB e PDF sem instalar mais nada.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap split">
+        <div class="window">
+          <div class="bar" aria-hidden="true"><span></span><span></span><span></span></div>
+          <img src="../img/agent-sync.gif" width="960" height="600" loading="lazy" alt="Um agente cria um capítulo e revisa o que está aberto; a barra lateral e a página se atualizam sozinhas">
+        </div>
+        <div>
+          <p class="kicker">Escrevendo com agentes</p>
+          <h2 style="font-size: clamp(28px, 3.6vw, 38px)">Os agentes editam os arquivos. Quem decide é você.</h2>
+          <ul class="checks">
+            <li><strong>As mudanças aparecem na hora</strong><span>Quando um agente cria um capítulo ou revisa o que está aberto, a barra lateral e a página se atualizam, e você não perde o lugar onde estava.</span></li>
+            <li><strong>Sugestões são diffs, não surpresas</strong><span>Reescreva um trecho, continue uma cena ou confira um capítulo contra as regras do seu mundo. Você vê cada mudança e decide se aceita.</span></li>
+            <li><strong>Seu texto nunca é sobrescrito</strong><span>Gravação atômica, conferência antes de cada gravação e um histórico de versões guardado fora do projeto.</span></li>
+          </ul>
+          <p class="agents">Funciona com Claude Code, Codex, Aider, Ollama ou qualquer ferramenta de linha de comando.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="tint" id="recursos">
+      <div class="wrap">
+        <div class="head">
+          <p class="kicker">Recursos</p>
+          <h2>Tudo o que um projeto longo precisa, e nada atrapalhando.</h2>
+        </div>
+        <div class="features">
+          <div class="feature"><h3>Uma página, não uma caixa de texto</h3><p>Markdown formatado enquanto você escreve, em fonte serifada numa coluna centralizada. A sintaxe só aparece na linha que você está editando.</p></div>
+          <div class="feature"><h3>Barra lateral do manuscrito</h3><p>Capítulos em ordem de leitura com contagem de palavras, o sumário do capítulo, personagens e notas. O próximo capítulo nasce com um clique.</p></div>
+          <div class="feature"><h3>Ferramentas de foco</h3><p>Modo foco em tela cheia, rolagem de máquina de escrever, parágrafos esmaecidos e os temas Paper, Sepia e Night.</p></div>
+          <div class="feature"><h3>Pesquisa ao lado da página</h3><p>PDFs, imagens e notas abrem ao lado do capítulo. Busque dentro dos PDFs e mande um trecho para o assistente com a fonte.</p></div>
+          <div class="feature"><h3>Busca no projeto inteiro</h3><p>Capítulos, fichas de personagens, notas e PDFs, sem diferenciar maiúsculas nem acentos.</p></div>
+          <div class="feature"><h3>Corretor ortográfico</h3><p>No idioma do seu livro, com dicionários Hunspell. Os nomes dos personagens são reconhecidos automaticamente.</p></div>
+          <div class="feature"><h3>Salvamento automático e histórico</h3><p>Salva logo depois que você para de digitar. Versões anteriores de cada capítulo podem ser comparadas e restauradas.</p></div>
+          <div class="feature"><h3>Exportação offline</h3><p>Word, EPUB, PDF, OpenDocument e HTML, com folha de rosto e sumário. Sem instalar mais nada.</p></div>
+          <div class="feature"><h3>Progresso à vista</h3><p>Palavras no capítulo e no livro, tempo de leitura, palavras escritas na sessão e uma meta opcional.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="head">
+          <p class="kicker">Modelos de projeto</p>
+          <h2>Comece com uma estrutura que os agentes entendem.</h2>
+          <p>O comando <em>New Project</em> cria as pastas e um guia, o <code>AGENT.md</code>, que explica aos agentes de IA como trabalhar no projeto. Ou abra qualquer pasta do jeito que ela está.</p>
+        </div>
+        <div class="kinds">
+          <div class="kind">
+            <h3>Romance</h3>
+            <p>Capítulos, fichas de personagens e um documento com as regras do seu mundo. O assistente confere a continuidade contra eles.</p>
+            <div class="tree"><b>meu-romance/</b>
+├── AGENT.md
+├── world-rules.md
+├── <b>chapters/</b>
+│   └── 001-opening.md
+└── <b>characters/</b>
+    └── example-character.md</div>
+          </div>
+          <div class="kind">
+            <h3>Processo jurídico</h3>
+            <p>Peças, partes, fatos com as respectivas provas e uma cronologia. O assistente nunca inventa fatos nem citações. Em português ou inglês.</p>
+            <div class="tree"><b>caso/</b>
+├── AGENT.md
+├── fatos.md · cronologia.md · provas.md
+├── <b>pecas/</b>
+│   └── 001-peticao-inicial.md
+├── <b>partes/</b>
+└── <b>autos/</b>   PDFs do tribunal</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tint pledge" id="codigo-aberto">
+      <div class="wrap">
+        <p class="kicker">Código aberto</p>
+        <h2>Código aberto hoje, <em>e sempre.</em></h2>
+        <p class="lede">O Quillwright é distribuído sob a licença MIT e vai continuar sendo de código aberto. Leia o código, compile você mesmo, modifique e compartilhe. Seus livros são arquivos comuns, então você sempre pode sair levando tudo.</p>
+        <div class="facts">
+          <div><strong>Licença MIT</strong><span>Use para o que quiser, inclusive trabalho comercial.</span></div>
+          <div><strong>Sem conta</strong><span>Baixe e escreva. Não há cadastro.</span></div>
+          <div><strong>Nada é enviado</strong><span>Sem telemetria. O app em si nunca acessa a internet.</span></div>
+          <div><strong>Nenhuma chave guardada</strong><span>Suas ferramentas de IA cuidam do próprio login, ou rodam localmente.</span></div>
+        </div>
+        <div class="actions">
+          <a class="button" href="https://github.com/fabiocmazzo/quillwright">Ver no GitHub</a>
+          <a class="button" href="https://github.com/fabiocmazzo/quillwright/discussions">Participe da conversa</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="download">
+      <div class="wrap">
+        <div class="head">
+          <p class="kicker">Download</p>
+          <h2>Grátis para Linux, Windows e macOS.</h2>
+        </div>
+        <div class="downloads">
+          <a class="os" href="https://github.com/fabiocmazzo/quillwright/releases/latest">
+            <h3>Linux</h3>
+            <span>AppImage ou .tar.gz. Precisa de GTK 3 e glibc 2.35 ou mais recente.</span>
+            <span class="go">Baixar →</span>
+          </a>
+          <a class="os" href="https://github.com/fabiocmazzo/quillwright/releases/latest">
+            <h3>Windows</h3>
+            <span>Um .zip com o quillwright.exe, para Windows 64 bits.</span>
+            <span class="go">Baixar →</span>
+          </a>
+          <a class="os" href="https://github.com/fabiocmazzo/quillwright/releases/latest">
+            <h3>macOS</h3>
+            <span>Um .dmg para Macs com Apple Silicon e Intel.</span>
+            <span class="go">Baixar →</span>
+          </a>
+        </div>
+        <p class="note">As versões para Windows e macOS ainda não são assinadas, então o sistema pede confirmação na primeira vez; o <a href="https://github.com/fabiocmazzo/quillwright#installation">guia de instalação</a> mostra como. Ou compile a partir do código com <code>cargo install --path .</code>.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <p>Quillwright, por Fabio Covolo Mazzo. Licença MIT.</p>
+      <nav aria-label="Rodapé">
+        <a href="https://github.com/fabiocmazzo/quillwright">GitHub</a>
+        <a href="https://github.com/fabiocmazzo/quillwright/releases">Versões</a>
+        <a href="https://github.com/fabiocmazzo/quillwright/blob/main/CHANGELOG.md">Novidades</a>
+        <a href="https://github.com/fabiocmazzo/quillwright/issues">Relatar um problema</a>
+        <a href="../" hreflang="en" lang="en">English</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

@@ -44,3 +44,4 @@ tests/tmp/
 
 # === Release packages ===
 dist/
+/_site
