@@ -42,6 +42,8 @@ docx-rs = "0.4.22"
 zip = { version = "8.6", default-features = false, features = ["deflate"] }
 yaml-rust2 = "0.13"
 imagesize = "0.15"
+# Decoding research images; the same features typst already enables.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 base64 = "0.22"
 
 [[bin]]

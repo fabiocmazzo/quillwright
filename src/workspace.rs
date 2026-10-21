@@ -1,6 +1,6 @@
 //! The writing workspace: menus, manuscript navigator, status bar, home screen,
 //! the page, and focus mode.
-use crate::{fonts, manuscript, project, theme, DiscardAction, MarkdownApp};
+use crate::{fonts, manuscript, project, reference, theme, DiscardAction, MarkdownApp};
 use eframe::egui;
 use egui::{
     text::{LayoutJob, TextWrapping},
@@ -44,6 +44,8 @@ enum NavAction {
     NewProject,
     BlankPage,
     Home,
+    Reference(PathBuf),
+    AddResearch,
 }
 
 impl MarkdownApp {
@@ -89,6 +91,17 @@ impl MarkdownApp {
         }
         if ui.button("New Character").clicked() {
             self.create_character();
+            ui.close();
+        }
+        if ui
+            .add_enabled(
+                self.in_project_for_research(),
+                Button::new("Add Research Files..."),
+            )
+            .on_hover_text("Copy PDFs, images, and notes into the project's research folder")
+            .clicked()
+        {
+            self.add_research_files();
             ui.close();
         }
         ui.separator();
@@ -200,6 +213,17 @@ impl MarkdownApp {
         if ui.checkbox(&mut sidebar, "Sidebar\tCtrl+B").changed() {
             self.config.view.sidebar = sidebar;
             self.save_config();
+        }
+        let mut reference = self.reference.open;
+        if ui
+            .add_enabled(
+                self.reference.has_file(),
+                egui::Checkbox::new(&mut reference, "Reference Panel"),
+            )
+            .on_hover_text("The research file you opened last")
+            .changed()
+        {
+            self.toggle_reference();
         }
         let mut typewriter = self.config.editor.typewriter;
         if ui
@@ -377,6 +401,9 @@ impl MarkdownApp {
                 }
                 ui.add_space(4.0);
 
+                // A solid scroll bar takes its own space; a floating one would cover the
+                // "+" buttons and word counts at the right edge.
+                ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
                 egui::ScrollArea::vertical()
                     .auto_shrink([false; 2])
                     .show(ui, |ui| {
@@ -446,6 +473,32 @@ impl MarkdownApp {
                             }
                         }
 
+                        if self.in_project_for_research() {
+                            if section(ui, "Research", Some("Add research files"), &p) {
+                                action = Some(NavAction::AddResearch);
+                            }
+                            if index.research.is_empty() {
+                                hint(ui, "PDFs, images, and notes — press + to add.", &p);
+                            }
+                            let research_dir = self.working_dir.join(manuscript::RESEARCH_DIR);
+                            let showing = self.reference.showing();
+                            for path in &index.research {
+                                let label = path
+                                    .strip_prefix(&research_dir)
+                                    .unwrap_or(path)
+                                    .display()
+                                    .to_string();
+                                let kind = reference::Kind::of(path);
+                                let selected = showing == Some(path.as_path());
+                                if nav_row(ui, selected, 0.0, &label, Some(kind.label().into()), &p)
+                                    .on_hover_text(file_label(path))
+                                    .clicked()
+                                {
+                                    action = Some(NavAction::Reference(path.clone()));
+                                }
+                            }
+                        }
+
                         ui.add_space(10.0);
                         let structured = index.has_chapters_dir || index.has_characters_dir;
                         egui::CollapsingHeader::new(
@@ -489,6 +542,8 @@ impl MarkdownApp {
             Some(NavAction::NewProject) => self.open_new_project_dialog(),
             Some(NavAction::BlankPage) => self.run_or_prompt_discard(DiscardAction::NewDocument),
             Some(NavAction::Home) => self.go_home(),
+            Some(NavAction::Reference(path)) => self.open_reference(path),
+            Some(NavAction::AddResearch) => self.add_research_files(),
         }
     }
 

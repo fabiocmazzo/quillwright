@@ -16,6 +16,8 @@ mod live_preview;
 mod manuscript;
 mod process;
 mod project;
+mod reference;
+mod reference_ui;
 mod saving;
 mod spelling;
 mod spelling_ui;
@@ -145,6 +147,7 @@ struct MarkdownApp {
     saving: saving::SavingState,
     export: export_ui::ExportState,
     spelling: spelling::Speller,
+    reference: reference_ui::ReferenceState,
     /// Where version history is kept; None if no data directory is available.
     history_root: Option<PathBuf>,
 }
@@ -352,6 +355,7 @@ impl Default for MarkdownApp {
             saving: saving::SavingState::default(),
             export: export_ui::ExportState::default(),
             spelling: spelling::Speller::default(),
+            reference: reference_ui::ReferenceState::default(),
             history_root: history::default_root(),
         };
 
@@ -375,6 +379,7 @@ impl eframe::App for MarkdownApp {
         self.sync_with_disk(ctx);
         self.poll_assistant();
         self.poll_spelling(ctx);
+        self.poll_reference(ctx);
         // Closing the window: save first, or ask if that is not possible.
         if ctx.input(|i| i.viewport().close_requested()) && !self.save_before_leaving() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -498,6 +503,7 @@ impl eframe::App for MarkdownApp {
             self.index = manuscript::Index::build(&self.working_dir);
             self.index_dirty = false;
             self.refresh_spelling();
+            self.refresh_reference();
         }
 
         if !self.focus_mode {
@@ -508,6 +514,9 @@ impl eframe::App for MarkdownApp {
             }
             if self.assistant.open {
                 self.show_assistant_panel(ui);
+            }
+            if self.reference.open {
+                self.show_reference_panel(ui);
             }
         }
 
@@ -1033,7 +1042,11 @@ impl MarkdownApp {
                         .selectable_label(is_selected, file_name)
                         .on_hover_text(file_path_string);
                     if response.clicked() {
-                        self.run_or_prompt_discard(DiscardAction::OpenPath(file.clone()));
+                        if reference::Kind::of(&file).viewer_only() {
+                            self.open_reference(file.clone());
+                        } else {
+                            self.run_or_prompt_discard(DiscardAction::OpenPath(file.clone()));
+                        }
                     }
                 }
             }

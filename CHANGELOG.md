@@ -3,6 +3,17 @@
 All notable changes to Quillwright are listed here. Versions follow
 [semantic versioning](https://semver.org).
 
+## Unreleased
+
+- **Research material.** A `research/` folder in the project is listed in the sidebar, and
+  its files open read only in a new **Reference panel** beside the page: plain text,
+  Markdown notes, and PNG, JPEG, GIF, and WebP images. **File → Add Research Files...**
+  copies files in without replacing any. Other files, PDFs included for now, open with the
+  system viewer. Images and PDFs in **All Files** open in the panel too.
+- The sidebar sorts names naturally: `note-2` comes before `note-10`, and chapters
+  numbered without leading zeros (`1-`, `2-`, `10-`) are in reading order.
+- The sidebar's scroll bar no longer covers the **+** buttons.
+
 ## 0.4.0 (2026-10-20)
 
 - **Spell checking.** Misspelled words are underlined as you write, and a right-click

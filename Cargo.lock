@@ -3981,6 +3981,7 @@ dependencies = [
  "eframe",
  "egui",
  "fontdb",
+ "image",
  "imagesize 0.15.0",
  "notify",
  "pulldown-cmark",

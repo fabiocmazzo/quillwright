@@ -156,27 +156,13 @@ impl MarkdownApp {
                 ))
                 .clicked()
             {
-                if let Err(err) = open_folder(&dir) {
+                if let Err(err) = std::fs::create_dir_all(&dir)
+                    .and_then(|_| crate::reference_ui::open_with_system(&dir))
+                {
                     self.show_tool_message(format!("Could not open {}: {err}", dir.display()));
                 }
                 ui.close();
             }
         }
     }
-}
-
-/// Show `dir` in the system file manager, creating it first.
-fn open_folder(dir: &std::path::Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(dir)?;
-    let program = if cfg!(target_os = "windows") {
-        "explorer"
-    } else if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
-    crate::process::command(program)
-        .arg(dir)
-        .spawn()
-        .map(|_| ())
 }

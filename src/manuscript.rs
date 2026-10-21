@@ -1,6 +1,7 @@
 //! Writer-facing view of a project folder: chapters, characters, notes, word counts.
 //! Everything is derived from plain Markdown files; nothing is stored.
 use std::{
+    cmp::Ordering,
     fs,
     io::{self, Write},
     path::{Path, PathBuf},
@@ -8,6 +9,8 @@ use std::{
 
 pub const CHAPTERS_DIR: &str = "chapters";
 pub const CHARACTERS_DIR: &str = "characters";
+/// Reference material: PDFs, images, clippings. Read only in the app.
+pub const RESEARCH_DIR: &str = "research";
 
 /// Count prose words, ignoring Markdown punctuation and HTML comments.
 pub fn word_count(text: &str) -> usize {
@@ -102,20 +105,29 @@ pub struct Index {
     pub characters: Vec<Entry>,
     /// Markdown files at the project root (world rules, outlines, AGENT.md, ...).
     pub notes: Vec<Entry>,
+    /// Every file under `research/`, sorted by path (hidden files skipped).
+    pub research: Vec<PathBuf>,
     pub has_chapters_dir: bool,
     pub has_characters_dir: bool,
+    pub has_research_dir: bool,
 }
 
 impl Index {
     pub fn build(root: &Path) -> Self {
         let chapters_dir = root.join(CHAPTERS_DIR);
         let characters_dir = root.join(CHARACTERS_DIR);
+        let research_dir = root.join(RESEARCH_DIR);
+        let mut research = Vec::new();
+        collect_files(&research_dir, 0, &mut research);
+        research.sort_by(|a, b| natural_path_cmp(a, b));
         Index {
             chapters: entries(&chapters_dir),
             characters: entries(&characters_dir),
             notes: entries(root),
             has_chapters_dir: chapters_dir.is_dir(),
             has_characters_dir: characters_dir.is_dir(),
+            research,
+            has_research_dir: research_dir.is_dir(),
         }
     }
 
@@ -128,6 +140,95 @@ impl Index {
                 _ => e.words,
             })
             .sum()
+    }
+}
+
+/// Compare paths the way people read them: folder by folder, numbers by value
+/// (`note-2` before `note-10`), letters without regard to case.
+pub fn natural_path_cmp(a: &Path, b: &Path) -> Ordering {
+    let mut left = a.components();
+    let mut right = b.components();
+    loop {
+        match (left.next(), right.next()) {
+            (None, None) => return Ordering::Equal,
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some(x), Some(y)) => {
+                let order = natural_cmp(
+                    &x.as_os_str().to_string_lossy(),
+                    &y.as_os_str().to_string_lossy(),
+                );
+                if order != Ordering::Equal {
+                    return order;
+                }
+            }
+        }
+    }
+}
+
+/// Natural order for one name. Ties (such as `01` and `1`, or `A` and `a`) fall back
+/// to plain string order, so the result is always total and stable.
+pub fn natural_cmp(a: &str, b: &str) -> Ordering {
+    let (mut x, mut y) = (a, b);
+    while !x.is_empty() && !y.is_empty() {
+        let digits_x = x.chars().next().is_some_and(|c| c.is_ascii_digit());
+        let digits_y = y.chars().next().is_some_and(|c| c.is_ascii_digit());
+        let order = if digits_x && digits_y {
+            let run_x = run(x, true);
+            let run_y = run(y, true);
+            let trimmed_x = run_x.trim_start_matches('0');
+            let trimmed_y = run_y.trim_start_matches('0');
+            let order = trimmed_x
+                .len()
+                .cmp(&trimmed_y.len())
+                .then_with(|| trimmed_x.cmp(trimmed_y));
+            x = &x[run_x.len()..];
+            y = &y[run_y.len()..];
+            order
+        } else {
+            let cx = x.chars().next().unwrap();
+            let cy = y.chars().next().unwrap();
+            x = &x[cx.len_utf8()..];
+            y = &y[cy.len_utf8()..];
+            cx.to_lowercase().cmp(cy.to_lowercase())
+        };
+        if order != Ordering::Equal {
+            return order;
+        }
+    }
+    x.len().cmp(&y.len()).then_with(|| a.cmp(b))
+}
+
+/// The leading run of ASCII digits (or of other characters) in `s`.
+fn run(s: &str, digits: bool) -> &str {
+    let end = s
+        .find(|c: char| c.is_ascii_digit() != digits)
+        .unwrap_or(s.len());
+    &s[..end]
+}
+
+/// Files below `dir`, a few levels deep, skipping hidden names (`.git`, `.DS_Store`).
+fn collect_files(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+    const MAX_DEPTH: usize = 4;
+    const MAX_FILES: usize = 2000;
+    let Ok(read) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in read.flatten() {
+        if out.len() >= MAX_FILES {
+            return;
+        }
+        let path = entry.path();
+        if entry.file_name().to_string_lossy().starts_with('.') {
+            continue;
+        }
+        if path.is_dir() {
+            if depth < MAX_DEPTH {
+                collect_files(&path, depth + 1, out);
+            }
+        } else if path.is_file() {
+            out.push(path);
+        }
     }
 }
 
@@ -147,7 +248,7 @@ fn entries(dir: &Path) -> Vec<Entry> {
         .map(|e| e.path())
         .filter(|p| is_markdown(p))
         .collect();
-    paths.sort();
+    paths.sort_by(|a, b| natural_path_cmp(a, b));
     paths
         .into_iter()
         .map(|path| {
@@ -264,6 +365,73 @@ pub fn new_character(root: &Path) -> io::Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sorts_names_naturally() {
+        let mut names = vec![
+            "note-10.txt",
+            "Note-2.txt",
+            "note-1.txt",
+            "10-end.md",
+            "2-middle.md",
+            "1-start.md",
+            "001-opening.md",
+            "notes.txt",
+        ];
+        names.sort_by(|a, b| natural_cmp(a, b));
+        assert_eq!(
+            names,
+            vec![
+                "001-opening.md",
+                "1-start.md",
+                "2-middle.md",
+                "10-end.md",
+                "note-1.txt",
+                "Note-2.txt",
+                "note-10.txt",
+                "notes.txt",
+            ]
+        );
+        assert_eq!(natural_cmp("a", "a"), Ordering::Equal);
+        assert_ne!(natural_cmp("01", "1"), Ordering::Equal);
+        // Folders sort as a whole: "maps/x" stays with "maps", before "maps2".
+        let mut paths = vec![
+            PathBuf::from("maps2/a.png"),
+            PathBuf::from("maps/b.png"),
+            PathBuf::from("maps.txt"),
+        ];
+        paths.sort_by(|a, b| natural_path_cmp(a, b));
+        assert_eq!(
+            paths,
+            vec![
+                PathBuf::from("maps/b.png"),
+                PathBuf::from("maps.txt"),
+                PathBuf::from("maps2/a.png"),
+            ]
+        );
+    }
+
+    #[test]
+    fn lists_research_files_recursively_without_hidden_ones() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("research/maps")).unwrap();
+        fs::write(root.join("research/notes.txt"), "x").unwrap();
+        fs::write(root.join("research/maps/harbor.png"), "x").unwrap();
+        fs::write(root.join("research/.DS_Store"), "x").unwrap();
+        let index = Index::build(root);
+        assert!(index.has_research_dir);
+        let names: Vec<_> = index
+            .research
+            .iter()
+            .map(|p| p.strip_prefix(root.join("research")).unwrap().to_path_buf())
+            .collect();
+        assert_eq!(
+            names,
+            vec![PathBuf::from("maps/harbor.png"), PathBuf::from("notes.txt")]
+        );
+        assert!(!Index::build(&root.join("research")).has_research_dir);
+    }
 
     #[test]
     fn counts_prose_words_only() {

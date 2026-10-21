@@ -71,6 +71,17 @@ The starter files are templates with empty fields, not story content. Everything
 
 The last opened project is remembered between sessions.
 
+## Research material
+
+Keep the material you write from (articles, photos, maps, clippings, notes) in a `research/` folder inside the project. The sidebar lists it under **Research**, and a click opens the file in the **Reference panel** beside the page, so the chapter stays open while you read.
+
+- **Adding files.** Press **+** next to Research, or use **File → Add Research Files...**, to copy files into `research/`. A file with the same name is never replaced; the copy gets a number instead. You can also put files there with your file manager or an agent; subfolders are fine.
+- **What it shows.** Plain text (`.txt`), Markdown notes (styled, with the syntax hidden), and PNG, JPEG, GIF, and WebP images. Click an image to switch between fitting the panel and its actual size. Other files, including PDFs for now, have an **Open with System Viewer** button.
+- **Read only.** The panel never changes a file. Text and Markdown files have an **Edit** button that opens them in the editor. If a file changes on disk, the panel shows the new version.
+- **View → Reference Panel** shows or hides the panel again.
+
+PDF viewing and search across PDFs are planned; see [docs/reference-material.md](docs/reference-material.md).
+
 ## Spell checking
 
 Misspelled words are underlined in red as you write. Right-click one to pick a suggestion, add the word to the project dictionary, or ignore it until you close the app. The word you are typing is not checked until you finish it, and code, links, and HTML are never checked. Turn it off with **View → Check Spelling**.
@@ -383,6 +394,7 @@ The live editor is a custom surface over the plain Markdown buffer, not a full r
 - Variable-font axes and switching font families without a restart are not supported.
 - Paragraph dimming only applies while the page has keyboard focus.
 - Spell checking has no grammar checking, and the underline is straight rather than wavy. Suggestions for languages with complex compound words can be weaker than in LibreOffice.
+- The Reference panel does not show PDFs yet, and images larger than 4096 pixels are shown scaled down.
 - Version history only covers files open in Quillwright. Changes an agent makes to other files are not copied, and renaming a file starts a new history for it.
 
 ## Tech stack
