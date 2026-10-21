@@ -1,0 +1,24 @@
+#!/bin/sh
+# Starts Quillwright inside its classic snap. The snap bundles GTK (for file dialogs) and
+# Mesa (OpenGL) from Ubuntu 24.04; these variables point them at the snap's copies. The
+# app removes them again before starting other programs (the assistant, lint tools,
+# xdg-open), which belong to the host: see src/process.rs.
+case "$(uname -m)" in
+  aarch64) triplet=aarch64-linux-gnu ;;
+  *) triplet=x86_64-linux-gnu ;;
+esac
+lib="$SNAP/usr/lib/$triplet"
+
+export QUILLWRIGHT_HOST_XDG_DATA_DIRS="${XDG_DATA_DIRS-}"
+export XDG_DATA_DIRS="$SNAP/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export LIBGL_DRIVERS_PATH="$lib/dri"
+export GBM_BACKENDS_PATH="$lib/gbm"
+export __EGL_VENDOR_LIBRARY_DIRS="$SNAP/usr/share/glvnd/egl_vendor.d"
+export GDK_PIXBUF_MODULE_FILE="$lib/gdk-pixbuf-2.0/2.10.0/loaders.cache"
+export GSETTINGS_SCHEMA_DIR="$SNAP/usr/share/glib-2.0/schemas"
+export GTK_PATH="$lib/gtk-3.0"
+export GTK_EXE_PREFIX="$SNAP/usr"
+export GIO_MODULE_DIR="$lib/gio/modules"
+export QUILLWRIGHT_SNAP_ENV="LIBGL_DRIVERS_PATH GBM_BACKENDS_PATH __EGL_VENDOR_LIBRARY_DIRS GDK_PIXBUF_MODULE_FILE GSETTINGS_SCHEMA_DIR GTK_PATH GTK_EXE_PREFIX GIO_MODULE_DIR"
+
+exec "$SNAP/bin/quillwright" "$@"

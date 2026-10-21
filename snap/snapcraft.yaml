@@ -1,0 +1,115 @@
+# The Snap Store package. See docs/linux-stores.md.
+#
+# Classic confinement: the assistant runs AI tools the user installed (claude, codex,
+# ollama), and a strictly confined snap cannot run host programs. Publishing a classic
+# snap needs approval from the Snap Store (a request on the Snapcraft forum).
+# Built and smoke-tested by .github/workflows/snap.yml.
+name: quillwright
+title: Quillwright
+summary: Write long-form text in plain Markdown, alongside AI agents
+description: |
+  Quillwright is a quiet, book-like writing environment for novels and other long
+  documents. A project is an ordinary folder of Markdown files: one per chapter, one per
+  character, and a page of world rules. There is no database and no lock-in.
+
+  It is designed to run next to AI agents that edit the same folder. Changes made on disk
+  appear in the editor as they happen, and your unsaved text is never overwritten. The
+  assistant panel uses the AI tool you already have installed (Claude Code, Codex, Ollama,
+  or any command), and its suggestions are shown as a diff that you accept or reject.
+
+  Also: research files (PDFs, images, notes) beside the page, project-wide search, spell
+  checking, autosave and version history, and built-in export to Word, EPUB, PDF,
+  OpenDocument, and HTML. Project templates for novels and for legal cases.
+website: https://github.com/fabiocmazzo/quillwright
+source-code: https://github.com/fabiocmazzo/quillwright
+issues: https://github.com/fabiocmazzo/quillwright/issues
+contact: https://github.com/fabiocmazzo/quillwright/issues
+license: MIT
+icon: assets/icon/quillwright.svg
+adopt-info: quillwright
+base: core24
+grade: stable
+confinement: classic
+platforms:
+  amd64:
+
+apps:
+  quillwright:
+    command: bin/launch
+    desktop: usr/share/applications/io.github.fabiocmazzo.quillwright.desktop
+    common-id: io.github.fabiocmazzo.quillwright
+
+parts:
+  quillwright:
+    plugin: rust
+    source: .
+    rust-channel: stable
+    # Classic snaps run against the snap's libraries only if their ELF files point at
+    # them; this makes snapcraft set the interpreter and library paths.
+    build-attributes: [enable-patchelf]
+    build-packages:
+      - pkg-config
+      - libgtk-3-dev
+      - libxkbcommon-dev
+      - libxcb-render0-dev
+      - libxcb-shape0-dev
+      - libxcb-xfixes0-dev
+      - libglib2.0-bin
+      - libgdk-pixbuf2.0-bin
+    stage-packages:
+      # GTK 3, for the file dialogs (rfd).
+      - libgtk-3-0t64
+      - libgdk-pixbuf-2.0-0
+      - librsvg2-common
+      - shared-mime-info
+      - gsettings-desktop-schemas
+      - adwaita-icon-theme
+      - hicolor-icon-theme
+      - dconf-gsettings-backend
+      # OpenGL through EGL/GLX (Mesa), for the glow renderer.
+      - libglvnd0
+      - libegl1
+      - libgl1
+      - libglx0
+      - libglx-mesa0
+      - libegl-mesa0
+      - libgl1-mesa-dri
+      - libgbm1
+      # Windowing (winit loads these at run time).
+      - libwayland-client0
+      - libwayland-cursor0
+      - libwayland-egl1
+      - libxkbcommon0
+      - libxkbcommon-x11-0
+      - libx11-6
+      - libx11-xcb1
+      - libxcursor1
+      - libxrandr2
+      - libxi6
+      - libxcb1
+      - libfontconfig1
+      - libfreetype6
+    override-pull: |
+      craftctl default
+      craftctl set version="$(sed -n 's/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -n 1)"
+    override-build: |
+      craftctl default
+      id=io.github.fabiocmazzo.quillwright
+      share="$CRAFT_PART_INSTALL/usr/share"
+      install -Dm755 snap/local/launch "$CRAFT_PART_INSTALL/bin/launch"
+      install -Dm644 packaging/linux/$id.metainfo.xml "$share/metainfo/$id.metainfo.xml"
+      install -Dm644 assets/icon/quillwright.svg "$share/icons/hicolor/scalable/apps/$id.svg"
+      install -Dm644 assets/icon/quillwright.png "$share/icons/hicolor/512x512/apps/$id.png"
+      install -Dm644 LICENSE "$share/doc/quillwright/LICENSE"
+      # snapd needs the icon as a path inside the snap.
+      sed "s|^Icon=.*|Icon=\${SNAP}/usr/share/icons/hicolor/scalable/apps/$id.svg|" \
+        packaging/linux/$id.desktop > desktop
+      install -Dm644 desktop "$share/applications/$id.desktop"
+    override-prime: |
+      craftctl default
+      # GSettings schemas and image loaders for GTK, with paths inside the snap.
+      glib-compile-schemas usr/share/glib-2.0/schemas
+      loaders=$(echo usr/lib/*/gdk-pixbuf-2.0/2.10.0)
+      GDK_PIXBUF_MODULEDIR="$PWD/$loaders/loaders" \
+        /usr/lib/*/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders \
+        | sed "s|$PWD|/snap/quillwright/current|g" > "$loaders/loaders.cache"

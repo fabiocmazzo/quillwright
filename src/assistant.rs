@@ -139,7 +139,12 @@ impl Context {
             if mentioned && found.len() < 8 {
                 if let Ok(contents) = std::fs::read_to_string(path) {
                     let relative = path.strip_prefix(root).unwrap_or(path);
-                    found.push((relative.display().to_string(), contents));
+                    // The same on every system: `characters/mara.md`, never with backslashes.
+                    let relative: Vec<_> = relative
+                        .components()
+                        .map(|c| c.as_os_str().to_string_lossy())
+                        .collect();
+                    found.push((relative.join("/"), contents));
                 }
             }
         }

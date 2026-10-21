@@ -3,10 +3,23 @@ use std::ffi::OsStr;
 use std::path::Path;
 use std::process::Command;
 
-/// A `Command` that never opens a console window on Windows.
+/// A `Command` that never opens a console window on Windows, and that does not pass on
+/// the library paths set by the snap's launcher (`snap/local/launch`): other programs
+/// belong to the host and must use its libraries.
 pub fn command(program: impl AsRef<OsStr>) -> Command {
     #[allow(unused_mut)]
     let mut command = Command::new(program);
+    if let Ok(names) = std::env::var("QUILLWRIGHT_SNAP_ENV") {
+        for name in names.split_whitespace() {
+            command.env_remove(name);
+        }
+        command.env_remove("QUILLWRIGHT_SNAP_ENV");
+        match std::env::var_os("QUILLWRIGHT_HOST_XDG_DATA_DIRS") {
+            Some(dirs) if !dirs.is_empty() => command.env("XDG_DATA_DIRS", dirs),
+            _ => command.env_remove("XDG_DATA_DIRS"),
+        };
+        command.env_remove("QUILLWRIGHT_HOST_XDG_DATA_DIRS");
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

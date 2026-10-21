@@ -57,7 +57,8 @@ Other behavior inside a Flatpak:
   the host cannot see. Saved files work.
 - "Open with System Viewer" uses `xdg-open`, which goes through the OpenURI portal.
 
-Not tested yet: the app has not been run inside a Flatpak or a snap.
+Not tested yet: the app has not been run inside a Flatpak. The snap is built and started in
+CI (below).
 
 ## Flathub
 
@@ -107,13 +108,40 @@ requirements: <https://docs.flathub.org/docs/for-app-authors/requirements>.
 
 ## Snap Store
 
+The snap is defined in `snap/snapcraft.yaml`:
+
+- **Classic confinement**, so the assistant can run the user's AI tools. Publishing it needs
+  the Snap Store's approval (step 4 below).
+- `base: core24` (Ubuntu 24.04), the `rust` plugin, and `enable-patchelf`, so the binary
+  uses the snap's libraries instead of the host's. GTK 3 (file dialogs) and Mesa (OpenGL)
+  are bundled from Ubuntu 24.04; machines with the proprietary NVIDIA driver fall back to
+  Mesa's software rendering.
+- `snap/local/launch` sets the library and data paths for GTK and Mesa. Those variables
+  would break the host programs the app starts (the assistant, lint tools, `xdg-open`), so
+  `process::command` removes them for child processes (listed in `QUILLWRIGHT_SNAP_ENV`)
+  and restores the host's `XDG_DATA_DIRS`.
+- The version comes from `Cargo.toml`; the store listing text is in the YAML and mirrors the
+  MetaInfo file.
+
+`.github/workflows/snap.yml` builds the snap on Ubuntu 24.04 (on changes to the snap files,
+or by hand from the Actions tab), installs it, starts the app under Xvfb, and uploads the
+`.snap`, a screenshot, and the app's log as an artifact.
+
+To publish:
+
 1. Create a Snapcraft account (Ubuntu One), then `snapcraft login` and
    `snapcraft register quillwright`.
-2. Write `snap/snapcraft.yaml`: `base: core24`, the `rust` plugin, the binary, desktop file,
-   MetaInfo, and icon, and the confinement (see the sandbox section: **classic** for a
-   working assistant).
-3. Build with `snapcraft`, upload with `snapcraft upload --release=edge quillwright_*.snap`,
-   test from the edge channel, then promote to `stable`.
-4. Classic confinement needs a request on the Snapcraft forum (category "store-requests")
-   explaining why: the app runs the user's own command-line AI tools and edits folders
-   anywhere in the home folder.
+2. Download the `.snap` from the workflow's artifact (or build it with `snapcraft` on an
+   Ubuntu machine with LXD).
+3. `snapcraft upload --release=edge quillwright_<version>_amd64.snap`. The first upload of a
+   classic snap waits for the request in step 4.
+4. Ask for classic confinement on the Snapcraft forum (<https://forum.snapcraft.io>, category
+   "store-requests"): the app is a writing editor whose assistant runs the command-line AI
+   tools the user installed (Claude Code, Codex, Ollama, or any command), and it opens and
+   watches project folders anywhere in the home folder and on removable drives.
+5. Test from the edge channel (`sudo snap install quillwright --edge --classic`), then
+   promote to `stable` (`snapcraft release quillwright <revision> stable`).
+
+Later, the release workflow can upload each tagged version with
+`snapcore/action-publish` and a `SNAPCRAFT_STORE_CREDENTIALS` secret
+(`snapcraft export-login`).

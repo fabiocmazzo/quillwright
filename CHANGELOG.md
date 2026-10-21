@@ -37,6 +37,9 @@ All notable changes to Quillwright are listed here. Versions follow
   describes the app for software stores, and the AppImage includes it.
 - Inside a Flatpak, the assistant and lint tools run the programs installed on your
   system through `flatpak-spawn --host`.
+- A snap package definition (`snap/snapcraft.yaml`), built and started in CI.
+- Fixed: on Windows, the assistant's prompt named sheets with backslashes
+  (`characters\mara.md`).
 - Internal: the novel layout (folders, sidebar labels, the assistant's context files,
   actions, and prompts) is now described in `assets/kinds/novel/kind.toml`, the first
   *project kind*. Nothing changes for novels; this prepares other kinds of writing.

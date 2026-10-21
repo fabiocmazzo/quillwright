@@ -1,0 +1,59 @@
+name: Snap
+
+# Builds the snap (snap/snapcraft.yaml), installs it, and checks that the app starts.
+# Publishing to the Snap Store is not automated yet; see docs/linux-stores.md.
+on:
+  push:
+    branches: [main, snap]
+    paths:
+      - snap/**
+      - src/process.rs
+      - packaging/linux/**
+      - .github/workflows/snap.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snap:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        id: build
+        uses: snapcore/action-build@v1
+
+      - name: Install
+        run: sudo snap install --dangerous --classic ${{ steps.build.outputs.snap }}
+
+      - name: Start the app
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb imagemagick
+          mkdir -p "$RUNNER_TEMP/book/chapters"
+          printf '# The Harbor\n\nMara walked to the docks.\n' > "$RUNNER_TEMP/book/chapters/001-the-harbor.md"
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1100x760x24 &
+          sleep 2
+          cd "$RUNNER_TEMP/book"
+          /snap/bin/quillwright "$RUNNER_TEMP/book/chapters/001-the-harbor.md" > app.log 2>&1 &
+          app=$!
+          sleep 20
+          import -window root "$RUNNER_TEMP/screenshot.png"
+          if ! kill -0 "$app"; then
+            echo "Quillwright exited early:"; cat app.log; exit 1
+          fi
+          kill "$app"
+          cat app.log
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: snap
+          path: |
+            ${{ steps.build.outputs.snap }}
+            ${{ runner.temp }}/screenshot.png
+            ${{ runner.temp }}/book/app.log
+          if-no-files-found: ignore
