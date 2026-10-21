@@ -50,7 +50,7 @@ yet.
 ```bash
 cargo run                                # debug build
 cargo run --release -- path/to/file.md   # open a file directly
-cargo test                               # 90 unit tests, about 1 s
+cargo test                               # 92 unit tests, about 1 s
 cargo fmt && cargo clippy --all-targets --locked -- -D warnings
 packaging/linux/build.sh 0.4.0           # AppImage + .tar.gz in dist/ (after a release build)
 packaging/linux/install-local.sh         # install the release build, menu entry, and icon in ~/.local
@@ -199,7 +199,9 @@ reads text or decodes images (the `image` crate, with the same features typst en
 thread; `poll_reference` turns the result into a texture. `refresh_reference` runs after each
 index rebuild and reloads the file if its size or modification time changed, or closes the
 panel when another project is opened. In All Files, images and PDFs open in the panel. The
-design and next steps (search) are in `docs/reference-material.md`.
+design is in `docs/reference-material.md`. Selecting a passage there (a read-only
+`TextEdit` for text and Markdown, dragging over glyph boxes in `PdfView` for PDFs) and
+choosing **Use as Context** adds an `assistant::Clip` with its citation to every prompt.
 
 PDFs: hayro's parsed document and caches borrow each other and use `Rc`, so
 `reference::pdf::Document` keeps them on one thread for the life of the view. Each frame,
@@ -309,36 +311,34 @@ A longer-term idea, *project kinds* (Novel, Legal case, ...) sharing one core, i
 1. **Verify the 0.4.0 packages on real Windows and macOS machines.** Check the icon, the
    absence of a console window, file dialogs, the first-launch working folder (should be the
    home folder), exporting every format (PDF uses typst in-process), and running the assistant.
-2. **Reference material, step 5** (`docs/reference-material.md`): "Use as Context" for the
-   assistant (a passage from a reference, with its citation, added to the next prompt).
-3. **Review agent changes (assistant "phase 2").** When an external change reloads the open
+2. **Review agent changes (assistant "phase 2").** When an external change reloads the open
    chapter, highlight the changed passages and offer accept or revert per passage. The pieces
    exist: the history copy taken before reload (`reload_from_disk`), word diffs
    (`assistant_ui::diff_job`, `similar`), and display mapping in `live_preview`. This is the
    project's main differentiator.
-4. **Spell checking polish.** A wavy underline (painted over the galley), bundling more
+3. **Spell checking polish.** A wavy underline (painted over the galley), bundling more
    dictionaries (pt_BR and es are a few MB each; check each license), grammar for English
    through `harper-core`, and checking the whole manuscript from the sidebar.
-5. **Render Markdown in assistant answers.** Continuity notes currently show raw `**` and `-`.
+4. **Render Markdown in assistant answers.** Continuity notes currently show raw `**` and `-`.
    Reuse `live_preview` styling for read-only text, as the Reference panel already does
    (`live_preview::project` with no selection hides all syntax).
-6. **Update GitHub Actions** that still target Node.js 20 (`actions/checkout`,
+5. **Update GitHub Actions** that still target Node.js 20 (`actions/checkout`,
    `upload-artifact`, `download-artifact`, `softprops/action-gh-release`). Read each
    changelog before bumping a major version.
-7. **Manuscript navigation:** drag to reorder chapters (renumbering the `001-` prefixes),
+6. **Manuscript navigation:** drag to reorder chapters (renumbering the `001-` prefixes),
    and a word count per character or POV. Project search snippets show raw Markdown
    (`**`); stripping it would read better.
-8. **Export polish:** fonts beyond Literata's Latin, Greek, and Cyrillic coverage in PDFs
+7. **Export polish:** fonts beyond Literata's Latin, Greek, and Cyrillic coverage in PDFs
    (load system fonts lazily through `fontdb`), drop caps or small caps for chapter openings,
    running headers in PDF, page numbers in the ODT table of contents, and validating EPUBs
    with epubcheck in CI.
-9. **Code signing and notarization** for Windows and macOS once certificates exist (see
+8. **Code signing and notarization** for Windows and macOS once certificates exist (see
    `docs/RELEASING.md`), plus distribution through Flathub, the AUR, and Homebrew.
-10. **Dependency upgrades:** `rfd` 0.11 pulls `block 0.1.6`, which triggers a
+9. **Dependency upgrades:** `rfd` 0.11 pulls `block 0.1.6`, which triggers a
    future-incompatibility warning on macOS. When upgrading egui again, remember that the
    custom editor relies on egui text internals (`Galley`, `CCursorRange`, cursor movement,
    IME events), so expect API changes and re-run the editor tests on all three OS modes.
-11. **Clean up the md-echo leftovers** listed above, and consider splitting `main.rs`
+10. **Clean up the md-echo leftovers** listed above, and consider splitting `main.rs`
     (find/replace and lint/format tools could move to their own modules).
 
 ## Known limitations (user-facing)

@@ -60,6 +60,10 @@ pub struct PdfView {
     focus_search: bool,
     /// Select the match at (page, character index) as soon as it is found.
     want: Option<(usize, usize)>,
+    /// Text selected by dragging: where the drag started and where it is, each as
+    /// (page, caret index in that page's text).
+    anchor: Option<(usize, usize)>,
+    head: Option<(usize, usize)>,
 }
 
 impl PdfView {
@@ -83,6 +87,8 @@ impl PdfView {
             selected: None,
             focus_search: false,
             want: None,
+            anchor: None,
+            head: None,
         }
     }
 
@@ -167,6 +173,58 @@ impl PdfView {
                 .partition_point(|&top| top <= reading_line)
                 .saturating_sub(1);
 
+            // Selecting text: drag across the pages, click to clear.
+            let page_rect = |page: usize| {
+                let size = vec2(sizes[page][0] * scale, sizes[page][1] * scale);
+                Rect::from_min_size(
+                    pos2(
+                        origin.x + (content_width - size.x) / 2.0,
+                        origin.y + tops[page],
+                    ),
+                    size,
+                )
+            };
+            let response = ui
+                .interact(
+                    Rect::from_min_size(origin, vec2(content_width, total)),
+                    egui::Id::unique(("pdf_text", self.id)),
+                    egui::Sense::click_and_drag(),
+                )
+                .on_hover_cursor(CursorIcon::Text);
+            if let Some(pos) = response.interact_pointer_pos() {
+                let page = tops
+                    .partition_point(|&top| top <= pos.y - origin.y)
+                    .saturating_sub(1)
+                    .min(count - 1);
+                let rect = page_rect(page);
+                let local = ((pos - rect.min) / scale).to_pos2();
+                let at = self.caret_at(page, local).map(|index| (page, index));
+                if response.drag_started() || response.clicked() {
+                    self.anchor = at;
+                    self.head = at;
+                    response.request_focus();
+                } else if response.dragged() && at.is_some() {
+                    self.head = at;
+                }
+            }
+            if response.has_focus() {
+                let (copy, escape) = ui.input(|i| {
+                    (
+                        i.events.iter().any(|e| matches!(e, egui::Event::Copy)),
+                        i.key_pressed(egui::Key::Escape),
+                    )
+                });
+                if copy {
+                    if let Some((text, _)) = self.selection() {
+                        ui.ctx().copy_text(text);
+                    }
+                }
+                if escape {
+                    self.anchor = None;
+                    self.head = None;
+                }
+            }
+
             let painter = ui.painter();
             for (page, size) in sizes.iter().enumerate().take(end).skip(first) {
                 let size = vec2(size[0] * scale, size[1] * scale);
@@ -195,6 +253,7 @@ impl PdfView {
                     );
                 }
                 self.paint_matches(painter, page, min, scale);
+                self.paint_selection(painter, page, min, scale);
             }
 
             // Visible pages first, then one on each side, so scrolling finds them ready.
@@ -252,6 +311,92 @@ impl PdfView {
             ctx.request_repaint_after(Duration::from_millis(30));
         } else if !self.query.is_empty() && self.doc.text_pages() < count {
             ctx.request_repaint_after(Duration::from_millis(150));
+        }
+    }
+
+    /// The caret index nearest to `local` (in PDF points on `page`), if its text is known.
+    fn caret_at(&self, page: usize, local: egui::Pos2) -> Option<usize> {
+        let page_text = self.texts.get(page)?.as_ref()?;
+        let mut best: Option<(f32, usize)> = None;
+        for (i, b) in page_text.boxes.iter().enumerate() {
+            if b[2] <= b[0] {
+                continue;
+            }
+            let dx = (b[0] - local.x).max(local.x - b[2]).max(0.0);
+            let dy = (b[1] - local.y).max(local.y - b[3]).max(0.0);
+            // Prefer the same line, then the nearest character on it.
+            let score = dy * 1000.0 + dx;
+            if best.is_none_or(|(s, _)| score < s) {
+                best = Some((score, i));
+            }
+        }
+        let (_, i) = best?;
+        let b = page_text.boxes[i];
+        Some(if local.x > (b[0] + b[2]) / 2.0 {
+            i + 1
+        } else {
+            i
+        })
+    }
+
+    /// The selection, ordered, as ((page, index), (page, index)); None when empty.
+    fn selection_bounds(&self) -> Option<((usize, usize), (usize, usize))> {
+        let (a, b) = (self.anchor?, self.head?);
+        let (start, end) = if a <= b { (a, b) } else { (b, a) };
+        (start != end).then_some((start, end))
+    }
+
+    /// The selected text, with line breaks inside paragraphs joined, and where it is
+    /// ("p. 3" or "pp. 3–4").
+    pub fn selection(&self) -> Option<(String, String)> {
+        let (start, end) = self.selection_bounds()?;
+        let mut parts = Vec::new();
+        for page in start.0..=end.0 {
+            let Some(page_text) = &self.texts[page] else {
+                continue;
+            };
+            let chars: Vec<char> = page_text.text.chars().collect();
+            let from = if page == start.0 { start.1 } else { 0 }.min(chars.len());
+            let to = if page == end.0 { end.1 } else { chars.len() }.clamp(from, chars.len());
+            parts.push(chars[from..to].iter().collect::<String>());
+        }
+        let text = parts
+            .iter()
+            .map(|part| part.replace("-\n", "").replace('\n', " "))
+            .collect::<Vec<_>>()
+            .join(" ")
+            .trim()
+            .to_string();
+        let pages = if start.0 == end.0 {
+            format!("p. {}", start.0 + 1)
+        } else {
+            format!("pp. {}–{}", start.0 + 1, end.0 + 1)
+        };
+        (!text.is_empty()).then_some((text, pages))
+    }
+
+    fn paint_selection(&self, painter: &egui::Painter, page: usize, min: egui::Pos2, scale: f32) {
+        let Some((start, end)) = self.selection_bounds() else {
+            return;
+        };
+        if page < start.0 || page > end.0 {
+            return;
+        }
+        let Some(page_text) = &self.texts[page] else {
+            return;
+        };
+        let from = if page == start.0 { start.1 } else { 0 };
+        let to = if page == end.0 {
+            end.1
+        } else {
+            page_text.boxes.len()
+        };
+        for r in text::highlight(page_text, from..to.max(from)) {
+            let rect = Rect::from_min_max(
+                min + vec2(r[0] * scale, r[1] * scale),
+                min + vec2(r[2] * scale, r[3] * scale),
+            );
+            painter.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(60, 120, 230, 80));
         }
     }
 
@@ -479,4 +624,62 @@ impl PdfView {
 fn quiet(ui: &mut Ui, text: &str, p: &theme::Palette) -> egui::Response {
     ui.add(Button::new(RichText::new(text).size(13.0).color(p.muted)).frame(false))
         .on_hover_cursor(CursorIcon::PointingHand)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A line of characters 5 points wide, at height `y`.
+    fn line(text: &str, y: f32) -> PageText {
+        let boxes = text
+            .chars()
+            .enumerate()
+            .map(|(i, c)| {
+                let x = i as f32 * 5.0;
+                match c {
+                    ' ' | '\n' => [x, y, x, y + 10.0],
+                    _ => [x, y, x + 5.0, y + 10.0],
+                }
+            })
+            .collect();
+        PageText {
+            text: text.into(),
+            boxes,
+        }
+    }
+
+    #[test]
+    fn drag_selection_across_pages() {
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join("two.pdf");
+        std::fs::write(&file, pdf::tests::sample_pdf(2)).unwrap();
+        let doc = pdf::Document::open(&file, None).unwrap();
+        let mut view = PdfView::new(doc, 0);
+        view.texts = vec![
+            Some(line("The har-\nbor froze", 0.0)),
+            Some(line("Ice.", 0.0)),
+        ];
+
+        // Nearest character, and its right half moves the caret past it.
+        assert_eq!(view.caret_at(0, pos2(1.0, 5.0)), Some(0));
+        assert_eq!(view.caret_at(0, pos2(4.0, 5.0)), Some(1));
+        assert_eq!(view.caret_at(0, pos2(500.0, 30.0)), Some(18));
+
+        view.anchor = Some((0, 4));
+        view.head = Some((0, 18));
+        assert_eq!(
+            view.selection(),
+            Some(("harbor froze".to_string(), "p. 1".to_string()))
+        );
+        // Dragging backwards, onto the next page.
+        view.anchor = Some((1, 3));
+        view.head = Some((0, 13));
+        assert_eq!(
+            view.selection(),
+            Some(("froze Ice".to_string(), "pp. 1–2".to_string()))
+        );
+        view.head = view.anchor;
+        assert_eq!(view.selection(), None);
+    }
 }

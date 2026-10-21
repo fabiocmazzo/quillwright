@@ -79,6 +79,7 @@ Keep the material you write from (articles, photos, maps, clippings, notes) in a
 - **What it shows.** PDFs, plain text (`.txt`), Markdown notes (styled, with the syntax hidden), and PNG, JPEG, GIF, and WebP images. Click an image to switch between fitting the panel and its actual size. Other files have an **Open with System Viewer** button.
 - **PDFs.** Pages are drawn by a built-in renderer, only as you scroll to them, so long books open quickly. Type a page number to jump there, and use **−** / **+** to zoom (click the percentage to fit the panel again). A PDF that changes on disk reopens at the page you were reading.
 - **Searching a PDF.** Type in **Find in this PDF**: matches are highlighted on the pages, starting from the page you are reading. **Enter** and **Shift+Enter** (or **‹** / **›**) move between them. Search ignores case and accents ("coracao" finds "Coração") and finds words hyphenated across a line break. The text is read in the background the first time a PDF is opened and kept in the app's data folder (`~/.local/share/quillwright/text-cache` on Linux), never in the project.
+- **Using a passage.** Select text in a reference (drag across a PDF page) and choose **Use as Context** to send it to the assistant with its source, such as `research/history.pdf, p. 3`. The passages are listed in the assistant panel and go with every request until you remove them (**×** or **Clear**). **Copy** (or Ctrl+C) copies the selection.
 - **Read only.** The panel never changes a file. Text and Markdown files have an **Edit** button that opens them in the editor. If a file changes on disk, the panel shows the new version.
 - **View → Reference Panel** shows or hides the panel again.
 
@@ -177,7 +178,7 @@ Press **Ctrl+K** (or **Assistant → Assistant Panel**) to open the panel beside
 | **Check continuity** | The whole chapter | Notes on contradictions with your canon and unclear passages |
 | **Ask** | Your instruction plus the chapter | A free-form answer |
 
-The instruction box also steers the four actions ("more tension, shorter sentences"). Every request includes the current chapter, `world-rules.md`, `AGENT.md`, and the character sheets of characters named in the chapter, and the panel tells you which of these it sent. **Prompt sent** shows the full prompt.
+The instruction box also steers the four actions ("more tension, shorter sentences"). Every request includes the current chapter, `world-rules.md`, `AGENT.md`, the character sheets of characters named in the chapter, and any reference passages you added with **Use as Context**, and the panel tells you which of these it sent. **Prompt sent** shows the full prompt.
 
 **Nothing is written into your manuscript automatically.** A suggestion stays in the panel until you choose **Replace selection** or **Insert at cursor**; you can also **Copy**, **Try again**, or **Discard** it. If you edited the selected passage while the assistant was working, Replace is refused and you can copy the suggestion instead. Accepted text is selected so you can see what changed, and it does not count toward your session words.
 

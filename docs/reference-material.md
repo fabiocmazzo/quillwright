@@ -4,8 +4,8 @@ Writers keep research next to the book: PDFs of articles and books, photos, maps
 notes, plain-text clippings. This document describes how Quillwright shows that material
 **beside** the manuscript, and how it will become searchable.
 
-Status: steps 1 to 4 (research folder, text and image viewer, PDF viewer, search in the
-open PDF, project-wide search) are implemented. Step 5 is planned.
+Status: all five steps (research folder, text and image viewer, PDF viewer, search in the
+open PDF, project-wide search, and passages as assistant context) are implemented.
 
 ## Principles
 
@@ -128,11 +128,26 @@ sidebar shows results instead of the manuscript.
 
 OCR for scanned PDFs (for example the pure-Rust `ocrs`) is out of scope for now.
 
-## Assistant (step 5)
+## Assistant (step 5, done)
 
-Selecting a passage in a reference and choosing **Use as Context** adds it to the next
-assistant prompt with its citation (`research/book.pdf, p. 42`). As always, the assistant
-only suggests; nothing enters the manuscript unless the author accepts it.
+Selecting a passage in a reference and choosing **Use as Context** adds it to the
+assistant's prompts with its citation (`research/book.pdf, p. 42`,
+`research/notes.md, lines 4–9`). As always, the assistant only suggests; nothing enters the
+manuscript unless the author accepts it.
+
+- **Selecting.** Text and Markdown references are shown in a read-only `TextEdit`, because a
+  `Label`'s selection cannot be read by the app. For Markdown, the buffer is the projection's
+  display text (`live_preview::project` with no selection) and the layouter returns that
+  projection's job, so the styling matches; the selection is mapped back to the source with
+  `Projection::to_source`, so the clip keeps the Markdown. PDFs are selected by dragging over
+  the pages: `PdfView::caret_at` finds the nearest glyph box from the extracted text (same
+  line first), and the selection is painted with `text::highlight`. Ctrl+C copies, Esc clears.
+  Line breaks inside the PDF text are joined (and `-` + line break removed).
+- **Clips.** `assistant::Clip { citation, text }`, at most `MAX_CLIPS` (8, the oldest is
+  dropped) and `CLIP_LIMIT` characters each. They stay in the panel until removed or the
+  project changes, and are sent with every request in a "Reference material chosen by the
+  author" section, each inside `<reference>` tags with a note that they are source material,
+  not instructions.
 
 ## Steps
 
@@ -141,4 +156,4 @@ only suggests; nothing enters the manuscript unless the author accepts it.
    **Done.**
 3. PDF text extraction, cache, and search in the open PDF with highlights. **Done.**
 4. Project-wide search across the manuscript and research. **Done.**
-5. "Use as Context" from references in the assistant.
+5. "Use as Context" from references in the assistant. **Done.**

@@ -26,6 +26,8 @@ pub struct ReferenceState {
     fit_width: bool,
     /// A search result to show once the PDF is open: (query, page, character index).
     pending_find: Option<(String, usize, usize)>,
+    /// The selected passage and where it is ("line 12", "p. 3"), from the last frame.
+    selection: Option<(String, String)>,
 }
 
 impl Default for ReferenceState {
@@ -39,6 +41,7 @@ impl Default for ReferenceState {
             error: None,
             fit_width: true,
             pending_find: None,
+            selection: None,
         }
     }
 }
@@ -67,6 +70,9 @@ enum PanelAction {
     Edit(PathBuf),
     External(PathBuf),
     ToggleFit,
+    /// Add the selection to the assistant's context, or copy it.
+    UseAsContext(String, String),
+    Copy(String),
 }
 
 impl MarkdownApp {
@@ -78,6 +84,7 @@ impl MarkdownApp {
         }
         state.shown = None;
         state.error = None;
+        state.selection = None;
         state.fit_width = true;
         state.loading = Some(reference::load_in_background(path.clone()));
         state.path = Some(path);
@@ -150,6 +157,7 @@ impl MarkdownApp {
         };
         if !path.starts_with(&self.working_dir) {
             *state = ReferenceState::default(); // Another project was opened.
+            self.clear_clips();
             return;
         }
         if state.loading.is_some() {
@@ -262,6 +270,29 @@ impl MarkdownApp {
                         action = Some(PanelAction::External(path.clone()));
                     }
                 });
+                if let Some((text, place)) = &self.reference.selection {
+                    ui.horizontal(|ui| {
+                        let citation = format!("{}, {place}", relative.display());
+                        if quiet(ui, "Use as Context", &p)
+                            .on_hover_text(
+                                "Send the selected passage, with its source, to the assistant",
+                            )
+                            .clicked()
+                        {
+                            action = Some(PanelAction::UseAsContext(citation, text.clone()));
+                        }
+                        if quiet(ui, "Copy", &p).clicked() {
+                            action = Some(PanelAction::Copy(text.clone()));
+                        }
+                        let words = text.split_whitespace().count();
+                        let s = if words == 1 { "" } else { "s" };
+                        ui.label(
+                            RichText::new(format!("{words} word{s} selected · {place}"))
+                                .size(12.0)
+                                .color(p.muted),
+                        );
+                    });
+                }
                 ui.add_space(6.0);
                 ui.separator();
                 self.reference_body(ui, &p, &mut action);
@@ -276,6 +307,8 @@ impl MarkdownApp {
                     self.run_or_prompt_discard(DiscardAction::OpenPath(path));
                 }
             }
+            Some(PanelAction::UseAsContext(citation, text)) => self.add_clip(citation, text),
+            Some(PanelAction::Copy(text)) => ctx.copy_text(text),
             Some(PanelAction::External(path)) => {
                 if let Err(error) = open_with_system(&path) {
                     self.sync_notice = Some(format!("⚠ Could not open the file: {error}"));
@@ -292,6 +325,7 @@ impl MarkdownApp {
     ) {
         let state = &mut self.reference;
         let fit = state.fit_width;
+        state.selection = None;
         if let Some(error) = &state.error {
             ui.add_space(8.0);
             ui.label(RichText::new(error).color(p.muted));
@@ -311,15 +345,18 @@ impl MarkdownApp {
                     .id_salt("reference_text")
                     .auto_shrink([false; 2])
                     .show(ui, |ui| {
-                        ui.add(
-                            egui::Label::new(
-                                RichText::new(text.as_str())
-                                    .font(FontId::new(15.0, fonts::family(false, false)))
-                                    .color(p.text),
-                            )
-                            .selectable(true)
-                            .wrap(),
-                        );
+                        let mut shown: &str = text;
+                        let output = egui::TextEdit::multiline(&mut shown)
+                            .id_salt("reference_text_view")
+                            .font(FontId::new(15.0, fonts::family(false, false)))
+                            .text_color(p.text)
+                            .frame(egui::Frame::NONE)
+                            .desired_width(f32::INFINITY)
+                            .show(ui);
+                        if let Some(range) = output.cursor_range {
+                            let [a, b] = range.sorted_cursors();
+                            state.selection = text_selection(text, a.index.0, b.index.0);
+                        }
                     });
             }
             Shown::Markdown(text) => {
@@ -327,9 +364,30 @@ impl MarkdownApp {
                     .id_salt("reference_markdown")
                     .auto_shrink([false; 2])
                     .show(ui, |ui| {
+                        // Show the styled text with the syntax hidden; select in it, and
+                        // map the selection back to the Markdown source.
                         let width = ui.available_width();
                         let projection = live_preview::project(ui, text, width, None);
-                        ui.add(egui::Label::new(projection.job).selectable(true));
+                        let mut shown: &str = &projection.job.text;
+                        let mut layouter = |ui: &Ui, _: &dyn egui::TextBuffer, wrap_width: f32| {
+                            let mut job = projection.job.clone();
+                            job.wrap.max_width = wrap_width;
+                            ui.fonts_mut(|f| f.layout_job(job))
+                        };
+                        let output = egui::TextEdit::multiline(&mut shown)
+                            .id_salt("reference_markdown_view")
+                            .frame(egui::Frame::NONE)
+                            .desired_width(f32::INFINITY)
+                            .layouter(&mut layouter)
+                            .show(ui);
+                        if let Some(range) = output.cursor_range {
+                            let [a, b] = range.sorted_cursors();
+                            let (start, end) = (
+                                projection.to_source(a.index.0),
+                                projection.to_source(b.index.0),
+                            );
+                            state.selection = text_selection(text, start, end);
+                        }
                     });
             }
             Shown::Image(texture) => {
@@ -366,7 +424,8 @@ impl MarkdownApp {
                 if let Some((query, page, at)) = state.pending_find.take() {
                     view.find_at(query, page, at);
                 }
-                view.show(ui, p)
+                view.show(ui, p);
+                state.selection = view.selection();
             }
             Shown::Unsupported(message) => {
                 ui.add_space(8.0);
@@ -374,6 +433,31 @@ impl MarkdownApp {
             }
         }
     }
+}
+
+/// The text between two character indices, trimmed, and its lines ("line 4", "lines 4–9").
+fn text_selection(text: &str, start: usize, end: usize) -> Option<(String, String)> {
+    let chars: Vec<char> = text.chars().collect();
+    let end = end.min(chars.len());
+    let mut from = start.min(end);
+    let mut to = end;
+    while from < to && chars[from].is_whitespace() {
+        from += 1;
+    }
+    while to > from && chars[to - 1].is_whitespace() {
+        to -= 1;
+    }
+    if from == to {
+        return None;
+    }
+    let line_of = |index: usize| 1 + chars[..index].iter().filter(|&&c| c == '\n').count();
+    let (first, last) = (line_of(from), line_of(to - 1));
+    let place = if first == last {
+        format!("line {first}")
+    } else {
+        format!("lines {first}–{last}")
+    };
+    Some((chars[from..to].iter().collect(), place))
 }
 
 fn quiet(ui: &mut Ui, text: &str, p: &theme::Palette) -> egui::Response {
@@ -391,4 +475,26 @@ pub(crate) fn open_with_system(path: &Path) -> std::io::Result<()> {
         "xdg-open"
     };
     process::command(program).arg(path).spawn().map(|_| ())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_selection_reports_trimmed_text_and_lines() {
+        let text = "one\ntwo three\n\nfour\n";
+        let at = |s: &str| text.find(s).unwrap();
+        assert_eq!(
+            text_selection(text, at("two"), at(" three")),
+            Some(("two".into(), "line 2".into()))
+        );
+        // Blank lines around the passage do not count.
+        assert_eq!(
+            text_selection(text, at("\ntwo"), text.len()),
+            Some(("two three\n\nfour".into(), "lines 2–4".into()))
+        );
+        assert_eq!(text_selection(text, 3, 3), None);
+        assert_eq!(text_selection(text, at("\n\n"), at("four")), None);
+    }
 }

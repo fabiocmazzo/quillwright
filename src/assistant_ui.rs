@@ -23,6 +23,8 @@ pub struct AssistantState {
     command_line: String,
     prompt_as_argument: bool,
     focus_instruction: bool,
+    /// Reference passages sent with every request until removed (this session only).
+    clips: Vec<assistant::Clip>,
 }
 
 impl AssistantState {
@@ -41,6 +43,8 @@ enum PanelAction {
     Discard,
     Close,
     SaveSettings,
+    RemoveClip(usize),
+    ClearClips,
 }
 
 impl MarkdownApp {
@@ -53,6 +57,29 @@ impl MarkdownApp {
                 state.show_settings = true;
             }
         }
+    }
+
+    /// Add a reference passage to the assistant's context ("Use as Context").
+    /// Forget the reference passages (another project was opened).
+    pub(crate) fn clear_clips(&mut self) {
+        self.assistant.clips.clear();
+    }
+
+    pub(crate) fn add_clip(&mut self, citation: String, text: String) {
+        let text = text.trim().to_string();
+        if text.is_empty() {
+            return;
+        }
+        let clip = assistant::Clip { citation, text };
+        let state = &mut self.assistant;
+        if !state.clips.contains(&clip) {
+            if state.clips.len() >= assistant::MAX_CLIPS {
+                state.clips.remove(0);
+            }
+            state.clips.push(clip);
+        }
+        state.open = true;
+        state.focus_instruction = true;
     }
 
     pub(crate) fn open_assistant_settings(&mut self) {
@@ -137,7 +164,8 @@ impl MarkdownApp {
             .iter()
             .map(|e| (e.path.clone(), e.title.clone()))
             .collect();
-        let context = assistant::Context::gather(&self.working_dir, &self.content, &characters);
+        let mut context = assistant::Context::gather(&self.working_dir, &self.content, &characters);
+        context.clips = self.assistant.clips.clone();
         let prompt = assistant::build_prompt(&request, &self.content, &context);
         let state = &mut self.assistant;
         state.open = true;
@@ -384,7 +412,10 @@ impl MarkdownApp {
                 .map(|e| (e.path.clone(), e.title.clone()))
                 .collect();
             // Cheap enough: a few small files, and only while the panel is open.
-            assistant::Context::gather(&self.working_dir, &self.content, &characters).summary()
+            let mut context =
+                assistant::Context::gather(&self.working_dir, &self.content, &characters);
+            context.clips = self.assistant.clips.clone();
+            context.summary()
         };
         let sends = if summary.is_empty() {
             "this chapter".to_string()
@@ -396,6 +427,52 @@ impl MarkdownApp {
                 .size(11.5)
                 .color(p.muted),
         );
+        if !self.assistant.clips.is_empty() {
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new("REFERENCE PASSAGES")
+                        .size(11.0)
+                        .strong()
+                        .color(p.muted),
+                );
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if quiet(ui, "Clear", p).clicked() {
+                        *action = Some(PanelAction::ClearClips);
+                    }
+                });
+            });
+            for (i, clip) in self.assistant.clips.iter().enumerate() {
+                egui::Frame::NONE
+                    .fill(theme::mix(p.desk, p.text, 0.05))
+                    .corner_radius(6)
+                    .inner_margin(egui::Margin::symmetric(8, 5))
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(&clip.citation).size(12.0).color(p.text));
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if quiet(ui, "×", p)
+                                    .on_hover_text("Stop sending this passage")
+                                    .clicked()
+                                {
+                                    *action = Some(PanelAction::RemoveClip(i));
+                                }
+                            });
+                        });
+                        let preview: String =
+                            clip.text.split_whitespace().collect::<Vec<_>>().join(" ");
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(preview).size(11.5).italics().color(p.muted),
+                            )
+                            .truncate(),
+                        )
+                        .on_hover_text(clip.text.chars().take(600).collect::<String>());
+                    });
+                ui.add_space(3.0);
+            }
+        }
 
         ui.add_space(10.0);
         let state = &self.assistant;
@@ -573,6 +650,12 @@ impl MarkdownApp {
                 self.assistant.error = None;
             }
             PanelAction::Close => self.assistant.open = false,
+            PanelAction::RemoveClip(i) => {
+                if i < self.assistant.clips.len() {
+                    self.assistant.clips.remove(i);
+                }
+            }
+            PanelAction::ClearClips => self.assistant.clips.clear(),
             PanelAction::SaveSettings => {
                 let state = &mut self.assistant;
                 let parts = assistant::split_command(&state.command_line);
