@@ -4,10 +4,11 @@
 # app removes them again before starting other programs (the assistant, lint tools,
 # xdg-open), which belong to the host: see src/process.rs.
 case "$(uname -m)" in
-  aarch64) triplet=aarch64-linux-gnu ;;
-  *) triplet=x86_64-linux-gnu ;;
+  aarch64) triplet=aarch64-linux-gnu loader=lib/ld-linux-aarch64.so.1 ;;
+  *) triplet=x86_64-linux-gnu loader=lib64/ld-linux-x86-64.so.2 ;;
 esac
 lib="$SNAP/usr/lib/$triplet"
+base=/snap/core24/current
 
 export QUILLWRIGHT_HOST_XDG_DATA_DIRS="${XDG_DATA_DIRS-}"
 export XDG_DATA_DIRS="$SNAP/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
@@ -21,4 +22,10 @@ export GTK_EXE_PREFIX="$SNAP/usr"
 export GIO_MODULE_DIR="$lib/gio/modules"
 export QUILLWRIGHT_SNAP_ENV="LIBGL_DRIVERS_PATH GBM_BACKENDS_PATH __EGL_VENDOR_LIBRARY_DIRS GDK_PIXBUF_MODULE_FILE GSETTINGS_SCHEMA_DIR GTK_PATH GTK_EXE_PREFIX GIO_MODULE_DIR"
 
-exec "$SNAP/bin/quillwright" "$@"
+# Run with Ubuntu 24.04's loader and libraries (from the core24 base snap) and the snap's
+# own, never the host's: mixing them with a different glibc fails. --library-path also
+# covers libraries opened at run time (EGL, Wayland, xkbcommon), and unlike
+# LD_LIBRARY_PATH it is not passed on to the programs Quillwright starts.
+exec "$base/$loader" \
+  --library-path "$lib:$SNAP/lib/$triplet:$base/usr/lib/$triplet:$base/lib/$triplet" \
+  "$SNAP/bin/quillwright" "$@"

@@ -112,8 +112,9 @@ The snap is defined in `snap/snapcraft.yaml`:
 
 - **Classic confinement**, so the assistant can run the user's AI tools. Publishing it needs
   the Snap Store's approval (step 4 below).
-- `base: core24` (Ubuntu 24.04), the `rust` plugin, and `enable-patchelf`, so the binary
-  uses the snap's libraries instead of the host's. GTK 3 (file dialogs) and Mesa (OpenGL)
+- `base: core24` (Ubuntu 24.04) and the `rust` plugin. The launcher starts the binary
+  with the core24 loader and `--library-path`, so it uses the snap's and core24's libraries,
+  never the host's (snapcraft's `enable-patchelf` did not patch the binary). GTK 3 (file dialogs) and Mesa (OpenGL)
   are bundled from Ubuntu 24.04; machines with the proprietary NVIDIA driver fall back to
   Mesa's software rendering.
 - `snap/local/launch` sets the library and data paths for GTK and Mesa. Those variables

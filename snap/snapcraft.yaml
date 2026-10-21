@@ -44,9 +44,6 @@ parts:
     plugin: rust
     source: .
     rust-channel: stable
-    # Classic snaps run against the snap's libraries only if their ELF files point at
-    # them; this makes snapcraft set the interpreter and library paths.
-    build-attributes: [enable-patchelf]
     build-packages:
       - pkg-config
       - libgtk-3-dev
