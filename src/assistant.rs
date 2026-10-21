@@ -518,15 +518,12 @@ impl Job {
         let (program, args) = parts
             .split_first()
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Empty command"))?;
-        let mut command = crate::process::command(program);
+        let mut command = crate::process::user_program(program, cwd);
         command
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        if cwd.is_dir() {
-            command.current_dir(cwd);
-        }
         let mut child = command.spawn()?;
         let stdin = child.stdin.take();
         let stdout = child.stdout.take();

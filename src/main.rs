@@ -35,6 +35,11 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use tempfile::{Builder, NamedTempFile};
 
+/// The app id: the name of the .desktop and MetaInfo files and the icons, and the window's
+/// Wayland app id / X11 class, so docks find its icon. Flathub requires `io.github.<user>.`
+/// for projects on GitHub.
+const APP_ID: &str = "io.github.fabiocmazzo.quillwright";
+
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = env::args().collect();
     let app = if args.len() > 1 {
@@ -57,8 +62,9 @@ fn main() -> eframe::Result<()> {
     };
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("Quillwright")
-        // Matches the .desktop file, so Linux docks show the right icon.
-        .with_app_id("quillwright");
+        // Matches the .desktop file (named after the app id), so Linux docks show the
+        // right icon.
+        .with_app_id(APP_ID);
     if let Ok(icon) =
         eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon/quillwright-128.png"))
     {
@@ -1180,12 +1186,9 @@ impl MarkdownApp {
             path
         };
 
-        let mut cmd = process::command(&command[0]);
+        let mut cmd = process::user_program(&command[0], &self.working_dir);
         for arg in &command[1..] {
             cmd.arg(arg);
-        }
-        if self.working_dir.is_dir() {
-            cmd.current_dir(&self.working_dir);
         }
         cmd.arg(&target_path);
 

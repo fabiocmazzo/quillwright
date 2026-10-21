@@ -247,7 +247,7 @@ Download the latest version from the **Releases** page of this repository.
 | System | File | How to run |
 | --- | --- | --- |
 | Linux | `Quillwright-<version>-x86_64.AppImage` | Make it executable (`chmod +x Quillwright-*.AppImage`), then double-click it or run it from a terminal. |
-| Linux | `quillwright-<version>-linux-x86_64.tar.gz` | Extract it and run `quillwright`. Copy `quillwright.desktop` and `quillwright.png` to `~/.local/share/applications/` and `~/.local/share/icons/` for a menu entry. |
+| Linux | `quillwright-<version>-linux-x86_64.tar.gz` | Extract it and run `quillwright`. For a menu entry, copy `io.github.fabiocmazzo.quillwright.desktop` to `~/.local/share/applications/` and `io.github.fabiocmazzo.quillwright.png` to `~/.local/share/icons/hicolor/512x512/apps/`. |
 | Windows | `quillwright-<version>-windows-x86_64.zip` | Extract it and run `quillwright.exe`. |
 | macOS | `Quillwright-<version>-macos-universal.dmg` | Open it and drag Quillwright to Applications. Works on Apple Silicon and Intel Macs. |
 

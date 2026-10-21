@@ -4,6 +4,14 @@ Releases are built by GitHub Actions ([`.github/workflows/release.yml`](../.gith
 
 1. Update `version` in `Cargo.toml` (for example `0.2.0`) and run `cargo build` so `Cargo.lock` picks it up.
    Add a section for the version to `CHANGELOG.md`; it is used as the release notes.
+   Add a `<release version="..." date="...">` with a short summary at the top of
+   `<releases>` in `packaging/linux/io.github.fabiocmazzo.quillwright.metainfo.xml` (software
+   stores show it), and check the file with `appstreamcli validate --pedantic`.
+   For the first release after 0.4.0, also update the AUR `PKGBUILD`s: the desktop file is
+   now `io.github.fabiocmazzo.quillwright.desktop`, the icons are named after the app id,
+   and the `.tar.gz` contains `io.github.fabiocmazzo.quillwright.png` instead of
+   `quillwright.png` (see `packaging/linux/build.sh`). Install the MetaInfo file to
+   `/usr/share/metainfo/` too.
 2. Commit, then tag and push. The tag must match the version in `Cargo.toml`, or the workflow stops:
 
    ```bash
@@ -39,6 +47,10 @@ packaging/macos/build.sh 0.2.0
 ```
 
 `packaging/linux/build.sh` downloads `appimagetool` unless `APPIMAGETOOL` points to a copy.
+
+## Flathub and the Snap Store
+
+See [docs/linux-stores.md](linux-stores.md).
 
 ## Code signing
 

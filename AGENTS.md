@@ -44,6 +44,8 @@ yet.
 - **Keep app data out of projects.** Version history lives in the user data folder, not in the
   book folder, so agents and Git never see it.
 - Start every external process with `process::command()` (no console window on Windows).
+  Programs the user installed (the assistant's `claude`/`codex`/`ollama`, lint tools) go
+  through `process::user_program()`, which runs them on the host from inside a Flatpak.
 - Before committing: `cargo fmt`, `cargo clippy --all-targets --locked -- -D warnings`, and
   `cargo test --locked` must all be clean. CI enforces this on three operating systems.
 
@@ -105,11 +107,11 @@ XDG_CONFIG_HOME=/tmp/qw/cfg XDG_DATA_HOME=/tmp/qw/data cargo run -- /tmp/qw/book
 | `src/reference_ui.rs` | Reference side panel (read only), Add Research Files, `open_with_system` |
 | `src/theme.rs` | Paper / Sepia / Night palettes and egui styling |
 | `src/fonts.rs` | Bundled fonts (Literata, Atkinson Hyperlegible) and system font fallback |
-| `src/process.rs` | `command()`: `std::process::Command` without a console window on Windows |
+| `src/process.rs` | `command()`: `std::process::Command` without a console window on Windows; `user_program()`: the user's own programs, through `flatpak-spawn --host` inside a Flatpak |
 | `assets/kinds/<id>/` | A project kind (`novel`, `legal`): the shared `kind.toml`, and per language (`en/`, `pt-BR/`) a `kind.toml` and the `template/` copied by New Project. Everything here is embedded (see `build.rs`) |
 | `assets/fonts/`, `assets/icon/` | Embedded fonts and the app icon (SVG source plus generated PNG/ICO) |
 | `assets/dictionaries/` | The bundled en_US Hunspell dictionary (SCOWL, from LibreOffice) and its copyright notice |
-| `packaging/`, `.github/workflows/` | Release packaging scripts and CI / release workflows |
+| `packaging/`, `.github/workflows/` | Release packaging scripts and CI / release workflows. `packaging/linux/` has the `.desktop` and AppStream MetaInfo files, named after the app id |
 | `docs/config.example.toml` | Documented example config; keep it in sync with the config structs |
 | `build.rs` | Embeds the icon in the Windows executable; lists every file under `assets/kinds/` for `kinds.rs` to embed (`$OUT_DIR/kind_files.rs`) |
 
@@ -300,8 +302,10 @@ README.
   --sync`) before typing. The first click after launch often only focuses the window, and
   native file dialogs are separate windows (find them with `xdotool search --name`).
 - On Wayland the window icon passed in code is ignored: the compositor matches the app id
-  (`quillwright`, set in `main.rs`) to an installed `quillwright.desktop` and its themed
-  icon. Run `packaging/linux/install-local.sh` to see the icon during development.
+  (`APP_ID` in `main.rs`, `io.github.fabiocmazzo.quillwright`, which is also the X11 class)
+  to an installed `io.github.fabiocmazzo.quillwright.desktop` and its themed icon, both
+  named after the app id. The id follows Flathub's rule for GitHub projects; do not change
+  it, or docks and stores lose track of the app. Run `packaging/linux/install-local.sh` to see the icon during development.
 - Window icons on X11 must be small (the app uses `assets/icon/quillwright-128.png`; 512 px
   silently fails).
 
@@ -357,7 +361,10 @@ with A4 defaults, and import from Word.
    running headers in PDF, page numbers in the ODT table of contents, and validating EPUBs
    with epubcheck in CI.
 8. **Code signing and notarization** for Windows and macOS once certificates exist (see
-   `docs/RELEASING.md`), plus distribution through Flathub, the AUR, and Homebrew.
+   `docs/RELEASING.md`), plus distribution through Flathub, the Snap Store, and Homebrew.
+   The app side for Flathub and Snap is ready (`docs/linux-stores.md`). Flathub forbids
+   AI-written manifests and AI-opened submissions: the maintainer writes and submits the
+   Flatpak manifest; agents must not.
 9. **Dependency upgrades:** `rfd` 0.11 pulls `block 0.1.6`, which triggers a
    future-incompatibility warning on macOS. When upgrading egui again, remember that the
    custom editor relies on egui text internals (`Galley`, `CCursorRange`, cursor movement,

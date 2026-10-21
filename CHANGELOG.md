@@ -30,6 +30,13 @@ All notable changes to Quillwright are listed here. Versions follow
   invent facts or citations, and how to split huge court PDFs safely.
 - New Project asks for the kind of project and, when it has several, the language of the
   template.
+- The app id is now `io.github.fabiocmazzo.quillwright`, as Flathub requires: the desktop
+  file and icons are named after it, and so is the window class. Run
+  `packaging/linux/install-local.sh` again after updating; it removes the old files.
+- A MetaInfo file (`packaging/linux/io.github.fabiocmazzo.quillwright.metainfo.xml`)
+  describes the app for software stores, and the AppImage includes it.
+- Inside a Flatpak, the assistant and lint tools run the programs installed on your
+  system through `flatpak-spawn --host`.
 - Internal: the novel layout (folders, sidebar labels, the assistant's context files,
   actions, and prompts) is now described in `assets/kinds/novel/kind.toml`, the first
   *project kind*. Nothing changes for novels; this prepares other kinds of writing.

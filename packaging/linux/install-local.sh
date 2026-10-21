@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Install Quillwright for the current user, with its menu entry and icon.
 # Wayland desktops ignore a window's own icon: they look up the .desktop file
-# that matches the app id ("quillwright") and its icon in the icon theme.
+# that matches the app id (io.github.fabiocmazzo.quillwright) and its icon in the
+# icon theme.
 #
 # Usage: packaging/linux/install-local.sh              # install target/release/quillwright
 #        packaging/linux/install-local.sh --uninstall  # remove what was installed
@@ -10,11 +11,15 @@ set -euo pipefail
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
 prefix=${PREFIX:-$HOME/.local}
+id=io.github.fabiocmazzo.quillwright
 bin="$prefix/bin/quillwright"
-desktop="$prefix/share/applications/quillwright.desktop"
+desktop="$prefix/share/applications/$id.desktop"
 icons="$prefix/share/icons/hicolor"
-png="$icons/512x512/apps/quillwright.png"
-svg="$icons/scalable/apps/quillwright.svg"
+png="$icons/512x512/apps/$id.png"
+svg="$icons/scalable/apps/$id.svg"
+# Installed by versions up to 0.4.0, before the app id changed.
+old=("$prefix/share/applications/quillwright.desktop"
+     "$icons/512x512/apps/quillwright.png" "$icons/scalable/apps/quillwright.svg")
 
 refresh() {
   if command -v update-desktop-database >/dev/null; then
@@ -26,7 +31,7 @@ refresh() {
 }
 
 if [ "${1:-}" = "--uninstall" ]; then
-  rm -f "$bin" "$desktop" "$png" "$svg"
+  rm -f "$bin" "$desktop" "$png" "$svg" "${old[@]}"
   refresh
   echo "Removed Quillwright from $prefix."
   exit 0
@@ -38,6 +43,7 @@ fi
 binary="$root/target/release/quillwright"
 [ -x "$binary" ] || { echo "Build first: cargo build --release" >&2; exit 1; }
 
+rm -f "${old[@]}"
 install -Dm755 "$binary" "$bin"
 install -Dm644 "$root/assets/icon/quillwright.png" "$png"
 install -Dm644 "$root/assets/icon/quillwright.svg" "$svg"
@@ -45,7 +51,7 @@ install -Dm644 "$root/assets/icon/quillwright.svg" "$svg"
 # entry at the installed binary.
 mkdir -p "$(dirname "$desktop")"
 sed -e "s|^Exec=quillwright|Exec=\"$bin\"|" -e "/^Exec=/a TryExec=$bin" \
-  "$root/packaging/linux/quillwright.desktop" >"$desktop"
+  "$root/packaging/linux/$id.desktop" >"$desktop"
 chmod 644 "$desktop"
 refresh
 
