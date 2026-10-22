@@ -8,7 +8,20 @@ repository = "https://github.com/fabiocmazzo/quillwright"
 categories = ["text-editors"]
 keywords = ["writing", "fiction", "novel", "markdown", "editor"]
 readme = "README.md"
-exclude = ["target/", "entries.json", "screenshots/"]
+homepage = "https://fabiocmazzo.github.io/quillwright/"
+# Only what the build and crates.io need. Packaging, the website, and local notes stay out.
+include = [
+    "/src/**",
+    "/assets/fonts/**",
+    "/assets/icon/**",
+    "/assets/dictionaries/**",
+    "/assets/kinds/**",
+    "/build.rs",
+    "/docs/config.example.toml",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+]
 
 [dependencies]
 spellbook       = "0.4"
