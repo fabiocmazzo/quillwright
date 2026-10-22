@@ -31,6 +31,9 @@ Releases are built by GitHub Actions ([`.github/workflows/release.yml`](../.gith
    | `SHA256SUMS.txt` | |
 
 4. The files are attached to a **draft** release with generated notes. Review it on the Releases page, then publish it.
+5. After publishing, update the package managers with the new download links and hashes
+   (from `SHA256SUMS.txt`): winget ([packaging/winget](../packaging/winget/README.md)) and
+   the Homebrew tap ([packaging/homebrew](../packaging/homebrew/README.md)).
 
 ## Building packages locally
 
