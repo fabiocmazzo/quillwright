@@ -32,7 +32,7 @@ Your work is never locked into a proprietary format. Everything is plain UTF-8 M
 - **Writing projects.** *New Project* creates a ready-to-use structure for a book — chapters, character sheets, world rules, and an `AGENT.md` guide for AI collaborators — or for a legal case (filings, parties, facts, evidence), in English or Portuguese. *Open Project* opens any existing folder as-is.
 - **Manuscript sidebar.** Chapters are listed in reading order by their real titles, with word counts. Below them, an outline of the current chapter's headings (click to jump), the characters, and project notes. **+** buttons create the next numbered chapter or a new character sheet. The full file tree is still one click away.
 - **A page, not a text box.** Live Markdown styling with a serif typeface (Literata by default) on a centered column. Markdown syntax is hidden except on the line you are editing. Scene breaks (`***`, `---`) are drawn as a centered ⁂.
-- **Writing themes.** *Paper* (warm light), *Sepia*, and *Night* (soft dark), switchable from **View → Theme**. The page is set apart from the "desk" around it.
+- **Writing themes.** *Paper* (warm light), *Sepia*, and *Night* (soft dark), switchable from **View → Theme**. By default the theme follows the system: Paper in light mode, Night in dark mode. The page is set apart from the "desk" around it.
 - **Focus tools.** **Focus mode** (F11) goes full screen and hides everything except the text. **Typewriter scrolling** keeps the line you are writing in the middle of the screen. **Dim other paragraphs** fades everything except the current paragraph.
 - **Progress you can see.** The status bar shows words in the chapter, reading time, words in the whole manuscript, words selected, and the words you have written this session. Set a **session goal** to get a progress bar.
 - **A project home.** The start screen continues the chapter you were writing and lists your recent projects.
@@ -342,7 +342,7 @@ Most options can also be changed from the **View** menu; changes are saved autom
 
 ```toml
 [theme]
-base = "night"          # "paper", "sepia", or "night" ("light"/"dark" also work)
+base = "system"         # "system" (default: Paper, or Night in dark mode), "paper", "sepia", or "night"
 # Optional overrides, applied on top of any theme:
 # background = "#1F2026" # the page
 # panel = "#16171B"      # sidebar, menus, status bar

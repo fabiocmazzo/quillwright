@@ -46,6 +46,12 @@ All notable changes to Quillwright are listed here. Versions follow
 - The sidebar sorts names naturally: `note-2` comes before `note-10`, and chapters
   numbered without leading zeros (`1-`, `2-`, `10-`) are in reading order.
 - The sidebar's scroll bar no longer covers the **+** buttons.
+- **The theme follows the system** by default: Paper in light mode and Night in dark mode,
+  switching when the system does. **View → Theme → Match System** brings it back after
+  choosing a theme. A theme chosen before keeps applying.
+- Fixed: the AppImage stopped at startup on systems without `libxkbcommon-x11` (it said
+  "Library libxkbcommon-x11.so could not be loaded"). It now carries that library and the
+  other X11 libraries the window toolkit loads at run time.
 
 ## 0.4.0 (2026-10-20)
 

@@ -25,6 +25,7 @@ mod search;
 mod search_ui;
 mod spelling;
 mod spelling_ui;
+mod system_theme;
 mod theme;
 mod workspace;
 use rfd::FileDialog;
@@ -78,7 +79,9 @@ fn main() -> eframe::Result<()> {
         "Quillwright",
         options,
         Box::new(move |cc| {
+            let mut app = app;
             fonts::install(&cc.egui_ctx, &app.config.editor);
+            app.system_theme = Some(system_theme::SystemTheme::start(&cc.egui_ctx));
             Ok(Box::new(app))
         }),
     )
@@ -104,6 +107,10 @@ struct MarkdownApp {
     tool_output: Option<String>,
     show_tool_output: bool,
     theme_applied: bool,
+    /// The system theme the current palette was chosen for (when the setting follows it).
+    theme_system: Option<egui::Theme>,
+    /// Follows the system's light or dark mode; set once the window exists.
+    system_theme: Option<system_theme::SystemTheme>,
     current_line: usize,
     editor_has_focus: bool,
     current_char_index: usize,
@@ -241,7 +248,7 @@ struct ThemeConfig {
 impl Default for ThemeConfig {
     fn default() -> Self {
         Self {
-            base: "night".to_string(),
+            base: theme::SYSTEM.to_string(),
             background: None,
             panel: None,
             text: None,
@@ -321,6 +328,8 @@ impl Default for MarkdownApp {
             tool_output: None,
             show_tool_output: false,
             theme_applied: false,
+            theme_system: None,
+            system_theme: None,
             current_line: 0,
             editor_has_focus: false,
             current_char_index: 0,
@@ -898,7 +907,15 @@ impl MarkdownApp {
     }
 
     fn ensure_theme(&mut self, ctx: &Context) {
-        if self.theme_applied {
+        // Applied once, and again when the setting follows the system and the system
+        // switches between light and dark mode.
+        let system = match &self.system_theme {
+            Some(system_theme) => system_theme.get(ctx),
+            None => ctx.system_theme(),
+        };
+        if self.theme_applied
+            && (!theme::follows_system(&self.config.theme.base) || system == self.theme_system)
+        {
             return;
         }
         let t = &self.config.theme;
@@ -909,9 +926,10 @@ impl MarkdownApp {
             text: color(&t.text),
             accent: color(&t.accent),
         };
-        let palette = theme::resolve(theme::Preset::from_name(&t.base), &overrides);
+        let palette = theme::resolve(theme::choose(&t.base, system), &overrides);
         theme::apply(ctx, &palette, color(&t.hyperlink));
         self.theme_applied = true;
+        self.theme_system = system;
     }
 
     fn pick_project(&mut self) {

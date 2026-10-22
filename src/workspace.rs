@@ -195,10 +195,18 @@ impl MarkdownApp {
 
     fn view_menu(&mut self, ui: &mut Ui) {
         ui.label(RichText::new("Theme").small().weak());
+        let follows = theme::follows_system(&self.config.theme.base);
+        if ui.radio(follows, "Match System").clicked() {
+            self.set_theme(theme::SYSTEM);
+            ui.close();
+        }
         let current = theme::Preset::from_name(&self.config.theme.base);
         for preset in theme::Preset::ALL {
-            if ui.radio(current == preset, preset.label()).clicked() {
-                self.set_theme(preset);
+            if ui
+                .radio(!follows && current == preset, preset.label())
+                .clicked()
+            {
+                self.set_theme(preset.name());
                 ui.close();
             }
         }
@@ -291,8 +299,9 @@ impl MarkdownApp {
         });
     }
 
-    pub(crate) fn set_theme(&mut self, preset: theme::Preset) {
-        self.config.theme.base = preset.name().to_string();
+    /// Sets the theme: a preset name, or [`theme::SYSTEM`].
+    pub(crate) fn set_theme(&mut self, name: &str) {
+        self.config.theme.base = name.to_string();
         self.theme_applied = false;
         self.save_config();
     }

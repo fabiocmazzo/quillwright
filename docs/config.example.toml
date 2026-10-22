@@ -6,10 +6,11 @@
 working_dir = "/home/you/notes"
 
 [theme]
-# Writing theme: "paper" (warm light), "sepia", or "night" (default).
+# Writing theme: "system" (default: "paper" when the system is in light mode, "night" in
+# dark mode, switching with it), "paper" (warm light), "sepia", or "night" (soft dark).
 # The legacy values "light" and "dark" map to "paper" and "night".
 # You can also switch themes from View → Theme.
-base = "night"
+base = "system"
 
 # Optional color overrides (RRGGBB or AARRGGBB, with or without a leading #).
 # They apply on top of whichever theme is selected, so leave them commented out

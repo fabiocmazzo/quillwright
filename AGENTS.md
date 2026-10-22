@@ -105,7 +105,8 @@ XDG_CONFIG_HOME=/tmp/qw/cfg XDG_DATA_HOME=/tmp/qw/data cargo run -- /tmp/qw/book
 | `src/search.rs` | Project-wide search: sources, the worker thread (`Searcher`, newest query wins), hits with line/page and context |
 | `src/search_ui.rs` | Sidebar search field and results (Ctrl+Shift+H), opening a hit in the editor or the PDF viewer |
 | `src/reference_ui.rs` | Reference side panel (read only), Add Research Files, `open_with_system` |
-| `src/theme.rs` | Paper / Sepia / Night palettes and egui styling |
+| `src/theme.rs` | Paper / Sepia / Night palettes and egui styling; the `"system"` setting (the default) picks Paper or Night |
+| `src/system_theme.rs` | The system's light or dark mode: from winit on Windows and macOS; on Linux, where winit does not know it, from the desktop portal's `color-scheme` (zbus, on a thread, following changes) |
 | `src/fonts.rs` | Bundled fonts (Literata, Atkinson Hyperlegible) and system font fallback |
 | `src/process.rs` | `command()`: `std::process::Command` without a console window on Windows; `user_program()`: the user's own programs, through `flatpak-spawn --host` inside a Flatpak |
 | `assets/kinds/<id>/` | A project kind (`novel`, `legal`): the shared `kind.toml`, and per language (`en/`, `pt-BR/`) a `kind.toml` and the `template/` copied by New Project. Everything here is embedded (see `build.rs`) |

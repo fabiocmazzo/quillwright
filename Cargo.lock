@@ -4019,6 +4019,7 @@ dependencies = [
  "egui",
  "flate2",
  "fontdb",
+ "futures-lite 2.6.1",
  "hayro",
  "image",
  "imagesize 0.15.0",
@@ -4038,6 +4039,7 @@ dependencies = [
  "winit",
  "winresource",
  "yaml-rust2",
+ "zbus",
  "zip",
 ]
 

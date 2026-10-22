@@ -72,6 +72,12 @@ base64 = "0.22"
 name = "quillwright"
 path = "src/main.rs"
 
+# Reading the system's light or dark mode from the desktop portal (src/system_theme.rs).
+# Both are already in the dependency tree through eframe's accessibility support.
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = { version = "5.19", default-features = false, features = ["async-io"] }
+futures-lite = { version = "2.6", default-features = false, features = ["std"] }
+
 [target."cfg(windows)".build-dependencies]
 winresource = "0.1.34"
 

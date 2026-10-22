@@ -68,6 +68,28 @@ impl Preset {
     }
 }
 
+/// The theme setting that follows the system: Paper, or Night when the system is in
+/// dark mode. It is the default.
+pub const SYSTEM: &str = "system";
+
+/// True when the theme setting follows the system's light or dark mode.
+pub fn follows_system(name: &str) -> bool {
+    let name = name.trim();
+    name.is_empty() || name.eq_ignore_ascii_case(SYSTEM)
+}
+
+/// The preset for a theme setting: a preset name, or [`SYSTEM`] with the system's theme
+/// (unknown counts as light).
+pub fn choose(name: &str, system: Option<egui::Theme>) -> Preset {
+    if !follows_system(name) {
+        return Preset::from_name(name);
+    }
+    match system {
+        Some(egui::Theme::Dark) => Preset::Night,
+        _ => Preset::Paper,
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Palette {
     pub dark: bool,
@@ -214,6 +236,16 @@ mod tests {
         for preset in Preset::ALL {
             assert_eq!(Preset::from_name(preset.name()), preset);
         }
+    }
+
+    #[test]
+    fn system_setting_follows_light_and_dark_mode() {
+        assert_eq!(choose("system", Some(egui::Theme::Dark)), Preset::Night);
+        assert_eq!(choose("System", Some(egui::Theme::Light)), Preset::Paper);
+        assert_eq!(choose("", None), Preset::Paper);
+        // A chosen preset wins over the system.
+        assert_eq!(choose("night", Some(egui::Theme::Light)), Preset::Night);
+        assert_eq!(choose("sepia", Some(egui::Theme::Dark)), Preset::Sepia);
     }
 
     #[test]
