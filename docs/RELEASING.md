@@ -34,6 +34,11 @@ Releases are built by GitHub Actions ([`.github/workflows/release.yml`](../.gith
 5. After publishing, update the package managers with the new download links and hashes
    (from `SHA256SUMS.txt`): winget ([packaging/winget](../packaging/winget/README.md)) and
    the Homebrew tap ([packaging/homebrew](../packaging/homebrew/README.md)).
+6. Publish the crate from the tagged commit, so `cargo install quillwright` gets the new
+   version: `cargo publish --locked` (after `cargo login` once with a crates.io token that
+   can publish updates). The `include` list in `Cargo.toml` decides what is uploaded; check
+   it with `cargo package --list` when files move. A published version cannot be replaced
+   or deleted, only yanked.
 
 ## Building packages locally
 
