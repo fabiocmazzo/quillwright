@@ -40,6 +40,24 @@ install -m 644 "$root/assets/icon/quillwright.png" "$appdir/$id.png"
 ln -s "$id.png" "$appdir/.DirIcon"
 ln -s usr/bin/quillwright "$appdir/AppRun"
 
+# Libraries that winit loads at run time (dlopen) and that minimal systems may lack, such
+# as libxkbcommon-x11 for the keyboard on X11. Without them the app panics at startup.
+# They go in usr/lib, found through RUNPATH ($ORIGIN) rather than LD_LIBRARY_PATH, which
+# would leak into the programs the app starts (the assistant, lint tools, xdg-open).
+# libX11, libxcb, GL, GTK, and glibc come from the host, as AppImages expect.
+bundled="libxkbcommon.so.0 libxkbcommon-x11.so.0 libxcb-xkb.so.1 libX11-xcb.so.1
+         libXcursor.so.1 libXrandr.so.2 libXi.so.6 libXrender.so.1 libXfixes.so.3 libXext.so.6"
+command -v patchelf >/dev/null || { echo "patchelf is needed to build the AppImage" >&2; exit 1; }
+mkdir -p "$appdir/usr/lib"
+for lib in $bundled; do
+  path=$(/sbin/ldconfig -p | awk -v l="$lib" '$1 == l && /x86-64/ { print $NF; exit }')
+  [ -n "$path" ] || { echo "Missing $lib on the build machine" >&2; exit 1; }
+  cp -L "$path" "$appdir/usr/lib/$lib"
+  chmod 644 "$appdir/usr/lib/$lib"
+  patchelf --set-rpath '$ORIGIN' "$appdir/usr/lib/$lib"
+done
+patchelf --set-rpath '$ORIGIN/../lib' "$appdir/usr/bin/quillwright"
+
 tool=${APPIMAGETOOL:-}
 if [ -z "$tool" ]; then
   tool="$work/appimagetool"

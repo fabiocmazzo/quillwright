@@ -38,6 +38,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libxkbcommon-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
+          # Bundled into the AppImage by build.sh.
+          sudo apt-get install -y patchelf libxkbcommon-x11-0 libxcb-xkb1 libx11-xcb1 libxcursor1 libxrandr2 libxi6
       - run: cargo build --release --locked
       - run: packaging/linux/build.sh "${{ needs.version.outputs.version }}"
       - uses: actions/upload-artifact@v4
