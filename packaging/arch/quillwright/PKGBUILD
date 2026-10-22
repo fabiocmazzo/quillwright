@@ -1,6 +1,6 @@
 # Maintainer: Fabio Covolo Mazzo <fabiomazzo at gmail dot com>
 pkgname=quillwright
-pkgver=0.4.0
+pkgver=0.5.0
 pkgrel=1
 pkgdesc='Writing environment for novels and long-form fiction in plain Markdown, designed to run alongside AI agents'
 arch=('x86_64' 'aarch64')
@@ -39,9 +39,11 @@ check() {
 package() {
   cd "$pkgname-$pkgver"
   install -Dm755 target/release/quillwright -t "$pkgdir/usr/bin"
-  install -Dm644 packaging/linux/quillwright.desktop -t "$pkgdir/usr/share/applications"
-  install -Dm644 assets/icon/quillwright.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/quillwright.png"
-  install -Dm644 assets/icon/quillwright.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/quillwright.svg"
+  local id=io.github.fabiocmazzo.quillwright
+  install -Dm644 packaging/linux/$id.desktop -t "$pkgdir/usr/share/applications"
+  install -Dm644 packaging/linux/$id.metainfo.xml -t "$pkgdir/usr/share/metainfo"
+  install -Dm644 assets/icon/quillwright.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/$id.png"
+  install -Dm644 assets/icon/quillwright.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/$id.svg"
   install -Dm644 LICENSE -t "$pkgdir/usr/share/licenses/$pkgname"
   install -Dm644 README.md -t "$pkgdir/usr/share/doc/$pkgname"
 }

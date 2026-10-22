@@ -3,7 +3,7 @@
 All notable changes to Quillwright are listed here. Versions follow
 [semantic versioning](https://semver.org).
 
-## Unreleased
+## 0.5.0 (2026-10-22)
 
 - **Research material.** A `research/` folder in the project is listed in the sidebar, and
   its files open read only in a new **Reference panel** beside the page: plain text,

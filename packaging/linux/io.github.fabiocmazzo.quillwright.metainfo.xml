@@ -86,6 +86,14 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.5.0" date="2026-10-22">
+      <description>
+        <p>Research files (PDFs, images, notes) open in a reference panel beside the page,
+        with search inside PDFs, and passages can be sent to the assistant with their
+        source. Project-wide search, a project template for legal cases in English and
+        Portuguese, and a theme that follows the system's light or dark mode.</p>
+      </description>
+    </release>
     <release version="0.4.0" date="2026-10-20">
       <description>
         <p>Spell checking as you write, with suggestions on right-click and a plain-text

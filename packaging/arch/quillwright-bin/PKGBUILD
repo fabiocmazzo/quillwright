@@ -1,7 +1,7 @@
 # Maintainer: Fabio Covolo Mazzo <fabiomazzo at gmail dot com>
 pkgname=quillwright-bin
 _pkgname=quillwright
-pkgver=0.4.0
+pkgver=0.5.0
 pkgrel=1
 pkgdesc='Writing environment for novels and long-form fiction in plain Markdown, designed to run alongside AI agents (prebuilt)'
 arch=('x86_64')
@@ -22,8 +22,9 @@ sha256sums=('284c417f3d2bf71384a785def015139e2fb2c2ecbd0baffabea392707d3e49a3')
 package() {
   cd "$_pkgname-$pkgver-linux-x86_64"
   install -Dm755 quillwright -t "$pkgdir/usr/bin"
-  install -Dm644 quillwright.desktop -t "$pkgdir/usr/share/applications"
-  install -Dm644 quillwright.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/quillwright.png"
+  install -Dm644 io.github.fabiocmazzo.quillwright.desktop -t "$pkgdir/usr/share/applications"
+  install -Dm644 io.github.fabiocmazzo.quillwright.metainfo.xml -t "$pkgdir/usr/share/metainfo"
+  install -Dm644 io.github.fabiocmazzo.quillwright.png -t "$pkgdir/usr/share/icons/hicolor/512x512/apps"
   install -Dm644 LICENSE -t "$pkgdir/usr/share/licenses/$pkgname"
   install -Dm644 README.md -t "$pkgdir/usr/share/doc/$pkgname"
 }

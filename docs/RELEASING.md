@@ -7,11 +7,8 @@ Releases are built by GitHub Actions ([`.github/workflows/release.yml`](../.gith
    Add a `<release version="..." date="...">` with a short summary at the top of
    `<releases>` in `packaging/linux/io.github.fabiocmazzo.quillwright.metainfo.xml` (software
    stores show it), and check the file with `appstreamcli validate --pedantic`.
-   For the first release after 0.4.0, also update the AUR `PKGBUILD`s: the desktop file is
-   now `io.github.fabiocmazzo.quillwright.desktop`, the icons are named after the app id,
-   and the `.tar.gz` contains `io.github.fabiocmazzo.quillwright.png` instead of
-   `quillwright.png` (see `packaging/linux/build.sh`). Install the MetaInfo file to
-   `/usr/share/metainfo/` too.
+   Set `pkgver` in both AUR `PKGBUILD`s (`packaging/arch/`); their checksums are updated
+   after the release is published, with the other package managers (step 5).
 2. Commit, then tag and push. The tag must match the version in `Cargo.toml`, or the workflow stops:
 
    ```bash
@@ -33,7 +30,8 @@ Releases are built by GitHub Actions ([`.github/workflows/release.yml`](../.gith
 4. The files are attached to a **draft** release with generated notes. Review it on the Releases page, then publish it.
 5. After publishing, update the package managers with the new download links and hashes
    (from `SHA256SUMS.txt`): winget ([packaging/winget](../packaging/winget/README.md)) and
-   the Homebrew tap ([packaging/homebrew](../packaging/homebrew/README.md)).
+   the Homebrew tap ([packaging/homebrew](../packaging/homebrew/README.md)), and the AUR
+   `PKGBUILD` checksums (`updpkgsums`, then `makepkg --printsrcinfo > .SRCINFO`).
 6. Publish the crate from the tagged commit, so `cargo install quillwright` gets the new
    version: `cargo publish --locked` (after `cargo login` once with a crates.io token that
    can publish updates). The `include` list in `Cargo.toml` decides what is uploaded; check

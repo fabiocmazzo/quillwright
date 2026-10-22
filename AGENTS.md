@@ -18,7 +18,7 @@ panel that calls an external AI CLI.
 It started as a fork of [md-echo](https://github.com/fibnas/md-echo) (MIT). The repository is
 `github.com/fabiocmazzo/quillwright`.
 
-**Status (October 2026):** version 0.4.0, with spell checking, on egui 0.37. Version 0.2.0 introduced the built-in
+**Status (October 2026):** version 0.5.0 (research files and PDFs, project search, legal cases), on egui 0.37. Version 0.2.0 introduced the built-in
 pure-Rust exporter (0.1.0 used pandoc). CI passes on Linux, Windows, and macOS. Releases are built by
 GitHub Actions as drafts; the Windows and macOS packages have not been tested on real machines
 yet.
@@ -56,7 +56,7 @@ cargo run                                # debug build
 cargo run --release -- path/to/file.md   # open a file directly
 cargo test                               # 97 unit tests, about 1 s
 cargo fmt && cargo clippy --all-targets --locked -- -D warnings
-packaging/linux/build.sh 0.4.0           # AppImage + .tar.gz in dist/ (after a release build)
+packaging/linux/build.sh 0.5.0           # AppImage + .tar.gz in dist/ (after a release build)
 packaging/linux/install-local.sh         # install the release build, menu entry, and icon in ~/.local
 ```
 
@@ -339,7 +339,7 @@ Roughly in priority order. Each one should keep the ground rules above.
 Legal kind: a lawyer's feedback on the template and actions, export of one filing at a time
 with A4 defaults, and import from Word.
 
-1. **Verify the 0.4.0 packages on real Windows and macOS machines.** Check the icon, the
+1. **Verify the release packages on real Windows and macOS machines.** Check the icon, the
    absence of a console window, file dialogs, the first-launch working folder (should be the
    home folder), exporting every format (PDF uses typst in-process), and running the assistant.
 2. **Review agent changes (assistant "phase 2").** When an external change reloads the open
