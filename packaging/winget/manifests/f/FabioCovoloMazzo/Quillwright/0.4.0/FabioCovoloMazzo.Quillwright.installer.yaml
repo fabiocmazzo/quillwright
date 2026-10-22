@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.9.0.schema.json
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
 
 PackageIdentifier: FabioCovoloMazzo.Quillwright
 PackageVersion: 0.4.0
@@ -14,4 +14,4 @@ Installers:
   InstallerUrl: https://github.com/fabiocmazzo/quillwright/releases/download/v0.4.0/quillwright-0.4.0-windows-x86_64.zip
   InstallerSha256: DCE7F79B6AE08ACD4E4F5090C9732371A287FAF22773ECF6A925B985A61AA323
 ManifestType: installer
-ManifestVersion: 1.9.0
+ManifestVersion: 1.12.0
