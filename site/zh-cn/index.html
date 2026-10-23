@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quillwright · 与 AI 智能体一起写作，每个字仍然属于你</title>
+  <meta name="description" content="Quillwright 是一款免费、开源的写作软件，适合长篇小说和长文档。你的书就是一个装着普通 Markdown 文件的文件夹，你已经在用的 AI 智能体可以在你写作的同时处理它。">
+  <link rel="canonical" href="https://fabiocmazzo.github.io/quillwright/zh-cn/">
+  <link rel="alternate" hreflang="en" href="https://fabiocmazzo.github.io/quillwright/">
+  <link rel="alternate" hreflang="pt-BR" href="https://fabiocmazzo.github.io/quillwright/pt-br/">
+  <link rel="alternate" hreflang="es" href="https://fabiocmazzo.github.io/quillwright/es/">
+  <link rel="alternate" hreflang="zh-CN" href="https://fabiocmazzo.github.io/quillwright/zh-cn/">
+  <link rel="alternate" hreflang="x-default" href="https://fabiocmazzo.github.io/quillwright/">
+  <link rel="icon" href="../img/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="../img/icon.png">
+  <meta name="theme-color" content="#fbf9f4" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#16171b" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="og:title" content="Quillwright">
+  <meta property="og:description" content="一款免费、开源的长篇写作软件，为与 AI 智能体协作而设计。">
+  <meta property="og:image" content="https://fabiocmazzo.github.io/quillwright/img/paper.png">
+  <meta property="og:url" content="https://fabiocmazzo.github.io/quillwright/zh-cn/">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preload" href="../fonts/Literata-Regular.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <a class="skip" href="#main">跳到正文</a>
+
+  <header class="wrap top">
+    <a class="brand" href="./"><img src="../img/icon.svg" alt="" width="32" height="32">Quillwright</a>
+    <nav class="nav" aria-label="主导航">
+      <a class="hide-sm" href="#features">功能</a>
+      <a class="hide-sm" href="#open-source">开源</a>
+      <a class="hide-sm" href="#download">下载</a>
+      <details class="langs">
+        <summary aria-label="语言">简体中文</summary>
+        <ul>
+          <li><a href="../" hreflang="en" lang="en">English</a></li>
+          <li><a href="../pt-br/" hreflang="pt-BR" lang="pt-BR">Português</a></li>
+          <li><a href="../es/" hreflang="es" lang="es">Español</a></li>
+          <li><a href="./" hreflang="zh-CN" lang="zh-CN" aria-current="page">简体中文</a></li>
+        </ul>
+      </details>
+    </nav>
+  </header>
+
+  <main id="main">
+    <div class="wrap hero">
+      <p class="eyebrow">免费开源 · MIT 许可证</p>
+      <h1><span class="phrase">一个安静的写作空间，</span><em class="phrase">就在你的 AI 智能体旁边</em></h1>
+      <p class="lede">Quillwright 是一款用于写长篇小说和长文档的桌面软件。你的书就是一个装着普通 Markdown 文件的文件夹。你已经在用的 AI 工具可以在你写作的同时处理它，而未经你同意，任何内容都不会进入你的正文。</p>
+      <div class="actions">
+        <a class="button primary" href="#download">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg>
+          免费下载
+        </a>
+        <a class="button" href="https://github.com/fabiocmazzo/quillwright">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/></svg>
+          源代码
+        </a>
+      </div>
+      <p class="platforms">Linux · Windows · macOS</p>
+    </div>
+
+    <div class="wrap shot">
+      <div class="window">
+        <div class="bar" aria-hidden="true"><span></span><span></span><span></span></div>
+        <picture>
+          <source srcset="../img/night.png" media="(prefers-color-scheme: dark)">
+          <img src="../img/paper.png" width="1000" height="680" alt="Quillwright：侧边栏中的章节列表和大纲，以及排成一页的章节">
+        </picture>
+      </div>
+    </div>
+
+    <section class="tint">
+      <div class="wrap">
+        <div class="head">
+          <p class="kicker">为什么选择 Quillwright</p>
+          <h2>为与 AI 合作的写作者而做，而不是让 AI 取代写作者。</h2>
+        </div>
+        <div class="reasons">
+          <div>
+            <span class="n">i.</span>
+            <h3>你的书始终属于你</h3>
+            <p>没有专有格式，也没有云端。每个章节、每个人物各是一个 Markdown 文件，任何编辑器都能打开，容易备份，也可以直接用 Git 管理。</p>
+          </div>
+          <div>
+            <span class="n">ii.</span>
+            <h3>配合你在用的智能体</h3>
+            <p>Claude Code、Codex，或通过 Ollama 运行的本地模型。Quillwright 理解章节和人物，智能体和你在同一个文件夹里工作。</p>
+          </div>
+          <div>
+            <span class="n">iii.</span>
+            <h3>一个小巧的软件</h3>
+            <p>一个用 Rust 编写的原生程序。无需账号、无需订阅、无需 API 密钥。内置导出 Word、EPUB 和 PDF。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap split">
+        <div class="window">
+          <div class="bar" aria-hidden="true"><span></span><span></span><span></span></div>
+          <img src="../img/agent-sync.gif" width="960" height="600" loading="lazy" alt="一个智能体新增了一章并修改了打开的章节；侧边栏和页面自动更新">
+        </div>
+        <div>
+          <p class="kicker">与智能体一起写作</p>
+          <h2 style="font-size: clamp(28px, 3.6vw, 38px)">智能体修改文件，由你来决定。</h2>
+          <ul class="checks">
+            <li><strong>更改即时显示</strong><span>当智能体新增一章或修改正在打开的章节时，侧边栏和页面会随之更新，你的位置也不会丢失。</span></li>
+            <li><strong>建议以差异显示，没有意外</strong><span>改写一段文字、续写场景，或对照世界规则检查一章。每处改动你都能看到，并决定是否接受。</span></li>
+            <li><strong>你的文字永远不会被覆盖</strong><span>原子化保存、每次写入前的检查，以及保存在项目之外的版本历史。</span></li>
+          </ul>
+          <p class="agents">支持 Claude Code、Codex、Aider、Ollama 或任何命令行工具。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="tint" id="features">
+      <div class="wrap">
+        <div class="head">
+          <p class="kicker">功能</p>
+          <h2>长篇项目需要的一切，没有多余的干扰。</h2>
+        </div>
+        <div class="features">
+          <div class="feature"><h3>一张纸，而不是一个文本框</h3><p>实时显示 Markdown 格式，衬线字体，居中排版。只有正在编辑的那一行才显示语法符号。</p></div>
+          <div class="feature"><h3>书稿侧边栏</h3><p>按阅读顺序列出章节和字数，还有当前章节的大纲、人物和笔记。一键新建下一章。</p></div>
+          <div class="feature"><h3>专注工具</h3><p>全屏专注模式、打字机滚动、淡化其他段落，以及纸张、复古和夜间三种主题。</p></div>
+          <div class="feature"><h3>资料就在页面旁边</h3><p>PDF、图片和笔记在章节旁边打开。可以在 PDF 中搜索，并把一段文字连同出处发送给助手。</p></div>
+          <div class="feature"><h3>搜索整个项目</h3><p>章节、人物设定、笔记和 PDF，不区分大小写和重音符号。</p></div>
+          <div class="feature"><h3>使用你的语言</h3><p>界面支持中文、英语、葡萄牙语和西班牙语。拼写检查使用书稿的语言，并自动认识人物的名字。</p></div>
+          <div class="feature"><h3>自动保存与历史</h3><p>停止输入片刻后自动保存。每一章的早期版本都可以比较和恢复。</p></div>
+          <div class="feature"><h3>离线导出</h3><p>Word、EPUB、PDF、OpenDocument 和 HTML，带扉页和目录。无需安装其他软件。</p></div>
+          <div class="feature"><h3>看得见的进度</h3><p>本章和全书的字数、阅读时间、本次写作的字数，以及可选的目标。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="head">
+          <p class="kicker">项目模板</p>
+          <h2>从一个智能体能看懂的结构开始。</h2>
+          <p>“新建项目”会创建文件夹和一份指南 <code>AGENT.md</code>，告诉 AI 智能体如何处理这个项目。你也可以直接打开任何现有文件夹。</p>
+        </div>
+        <div class="kinds">
+          <div class="kind">
+            <h3>小说</h3>
+            <p>章节、人物设定，以及一份记录世界规则的文档。助手会据此检查连贯性。</p>
+            <div class="tree"><b>my-novel/</b>
+├── AGENT.md
+├── world-rules.md
+├── <b>chapters/</b>
+│   └── 001-opening.md
+└── <b>characters/</b>
+    └── example-character.md</div>
+          </div>
+          <div class="kind">
+            <h3>法律案件</h3>
+            <p>文书、当事人、附有证据的事实，以及时间线。助手从不编造事实或引文。模板提供英文和葡萄牙文版本。</p>
+            <div class="tree"><b>case/</b>
+├── AGENT.md
+├── facts.md · timeline.md · evidence.md
+├── <b>filings/</b>
+│   └── 001-complaint.md
+├── <b>parties/</b>
+└── <b>case-files/</b>   法院 PDF</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tint pledge" id="open-source">
+      <div class="wrap">
+        <p class="kicker">开源</p>
+        <h2>今天开源，<em>永远开源。</em></h2>
+        <p class="lede">Quillwright 以 MIT 许可证发布，并将一直保持开源。你可以阅读代码、自己编译、修改并分享。你的书都是普通文件，随时可以带走全部内容。</p>
+        <div class="facts">
+          <div><strong>MIT 许可证</strong><span>可用于任何用途，包括商业用途。</span></div>
+          <div><strong>无需账号</strong><span>下载就能写，不用注册。</span></div>
+          <div><strong>不发送任何数据</strong><span>没有遥测。软件本身从不联网。</span></div>
+          <div><strong>不保存密钥</strong><span>AI 工具自己负责登录，或者在本地运行。</span></div>
+        </div>
+        <div class="actions">
+          <a class="button" href="https://github.com/fabiocmazzo/quillwright">在 GitHub 上查看</a>
+          <a class="button" href="https://github.com/fabiocmazzo/quillwright/discussions">参与讨论</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="download">
+      <div class="wrap">
+        <div class="head">
+          <p class="kicker">下载</p>
+          <h2>免费提供 Linux、Windows 和 macOS 版本。</h2>
+        </div>
+        <div class="downloads">
+          <a class="os" href="https://github.com/fabiocmazzo/quillwright/releases/latest">
+            <h3>Linux</h3>
+            <span>AppImage 或 .tar.gz。需要 GTK 3 和 glibc 2.35 或更新版本。</span>
+            <span class="go">下载 →</span>
+          </a>
+          <a class="os" href="https://github.com/fabiocmazzo/quillwright/releases/latest">
+            <h3>Windows</h3>
+            <span>包含 quillwright.exe 的 .zip，适用于 64 位 Windows。</span>
+            <span class="go">下载 →</span>
+          </a>
+          <a class="os" href="https://github.com/fabiocmazzo/quillwright/releases/latest">
+            <h3>macOS</h3>
+            <span>适用于 Apple Silicon 和 Intel Mac 的 .dmg。</span>
+            <span class="go">下载 →</span>
+          </a>
+        </div>
+        <p class="note">Windows 和 macOS 版本尚未签名，因此首次打开时系统会要求确认；<a href="https://github.com/fabiocmazzo/quillwright#installation">安装指南</a>说明了具体做法。也可以用 <code>cargo install --path .</code> 从源代码编译。</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <p>Quillwright，作者 Fabio Covolo Mazzo。MIT 许可证。</p>
+      <nav aria-label="页脚">
+        <a href="https://github.com/fabiocmazzo/quillwright">GitHub</a>
+        <a href="https://github.com/fabiocmazzo/quillwright/releases">版本</a>
+        <a href="https://github.com/fabiocmazzo/quillwright/blob/main/CHANGELOG.md">更新日志</a>
+        <a href="https://github.com/fabiocmazzo/quillwright/issues">报告问题</a>
+        <a href="../" hreflang="en" lang="en">English</a>
+        <a href="../pt-br/" hreflang="pt-BR" lang="pt-BR">Português</a>
+        <a href="../es/" hreflang="es" lang="es">Español</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

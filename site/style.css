@@ -167,10 +167,72 @@ p {
 .nav a:hover {
   color: var(--accent);
 }
-.nav .lang {
+/* Language switcher: a <details> menu, no JavaScript. */
+.langs {
+  position: relative;
+}
+.langs summary {
+  list-style: none;
+  cursor: pointer;
+  color: var(--muted);
   border: 1px solid var(--rule);
   border-radius: 999px;
   padding: 3px 12px;
+}
+.langs summary::-webkit-details-marker {
+  display: none;
+}
+.langs summary::after {
+  content: " ▾";
+}
+.langs summary:hover {
+  color: var(--accent);
+}
+.langs ul {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 10;
+  min-width: 170px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--page);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.langs li a {
+  display: block;
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+.langs li a:hover {
+  background: var(--desk);
+}
+.langs a[aria-current] {
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* Chinese: system CJK fonts after the Latin ones, and no slanted emphasis. */
+:lang(zh) {
+  --serif: "Literata", "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "SimSun", serif;
+  --sans: "Atkinson Hyperlegible", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+}
+/* A CJK character is about 2ch wide, so the headline gets a wider measure. */
+:lang(zh) .hero h1 {
+  max-width: 11em;
+  /* Each phrase stays on one line on phones. */
+  font-size: clamp(28px, 6.4vw, 64px);
+}
+/* Headline phrases wrap as a whole when they fit on a line. */
+.phrase {
+  display: inline-block;
+}
+:lang(zh) em {
+  font-style: normal;
+  color: var(--accent);
 }
 
 /* Hero */

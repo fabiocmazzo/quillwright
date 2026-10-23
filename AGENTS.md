@@ -125,7 +125,7 @@ XDG_CONFIG_HOME=/tmp/qw/cfg XDG_DATA_HOME=/tmp/qw/data cargo run -- /tmp/qw/book
 | `assets/dictionaries/` | The bundled en_US Hunspell dictionary (SCOWL, from LibreOffice) and its copyright notice |
 | `packaging/`, `.github/workflows/` | Release packaging scripts and CI / release workflows. `packaging/linux/` has the `.desktop` and AppStream MetaInfo files, named after the app id; `packaging/winget/` and `packaging/homebrew/` hold the winget manifests and the Homebrew cask (updated by hand each release) |
 | `snap/` | The snap: `snapcraft.yaml` (classic, core24, bundled GTK and Mesa) and `local/launch`; built and smoke-tested by `.github/workflows/snap.yml` |
-| `site/` | The website (English, and Portuguese in `pt-br/`): static HTML and CSS, no JavaScript. `site/build.sh` adds the screenshots, icon, and fonts into `_site/`; `.github/workflows/pages.yml` publishes it to GitHub Pages. Keep its claims in step with the README |
+| `site/` | The website (English, Portuguese in `pt-br/`, Spanish in `es/`, Chinese in `zh-cn/`): static HTML and CSS, no JavaScript. `site/build.sh` adds the screenshots, icon, and fonts into `_site/`; `.github/workflows/pages.yml` publishes it to GitHub Pages. Keep its claims in step with the README |
 | `docs/config.example.toml` | Documented example config; keep it in sync with the config structs |
 | `build.rs` | Embeds the icon in the Windows executable; lists every file under `assets/kinds/` for `kinds.rs` to embed (`$OUT_DIR/kind_files.rs`) |
 
@@ -413,7 +413,7 @@ with A4 defaults, and import from Word.
    custom editor relies on egui text internals (`Galley`, `CCursorRange`, cursor movement,
    IME events), so expect API changes and re-run the editor tests on all three OS modes.
 10. **Interface translations:** have native speakers review the Portuguese, Spanish, and
-    Chinese texts (they were written by an agent), and translate the website and README.
+    Chinese texts and website pages (they were written by an agent), and translate the README.
     Chinese word counts split on spaces, which undercounts Chinese text; counting CJK
     characters would read better.
 11. **Clean up the md-echo leftovers** listed above, and consider splitting `main.rs`
