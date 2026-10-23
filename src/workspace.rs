@@ -385,12 +385,8 @@ impl MarkdownApp {
             .show(root, |ui| {
                 let name = folder_name(&self.working_dir);
                 ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(&name)
-                            .font(FontId::new(19.0, fonts::family(true, false)))
-                            .color(p.text),
-                    )
-                    .on_hover_text(self.working_dir.display().to_string());
+                    // The buttons take their space first; a long name is cut short with
+                    // "…" in what is left instead of running under them.
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         if quiet_button(ui, "Home", &p)
                             .on_hover_text("Project home")
@@ -404,6 +400,17 @@ impl MarkdownApp {
                         {
                             action = Some(NavAction::PickProject);
                         }
+                        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(&name)
+                                        .font(FontId::new(19.0, fonts::family(true, false)))
+                                        .color(p.text),
+                                )
+                                .truncate(),
+                            )
+                            .on_hover_text(self.working_dir.display().to_string());
+                        });
                     });
                 });
                 if index.has_documents_dir {

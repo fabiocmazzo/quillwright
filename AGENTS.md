@@ -62,6 +62,11 @@ packaging/linux/install-local.sh         # install the release build, menu entry
 
 Linux builds need GTK 3 headers (`rfd` uses GTK file dialogs).
 
+After `cargo publish` or `cargo package` (including `--dry-run`), delete `target/package/`.
+Their verification build shares `target/` and leaves the app's fingerprint pointing at the
+packaged copy of the sources, so later `cargo build`s report the app as fresh and silently
+keep the old binary.
+
 Cross-checking with `cargo check --target x86_64-pc-windows-msvc` or `aarch64-apple-darwin`
 no longer works from Linux: typst depends on `psm`/`stacker`, whose build scripts assemble a
 small stack-switching routine with the target's toolchain. Rely on CI for Windows and macOS.

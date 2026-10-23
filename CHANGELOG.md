@@ -3,6 +3,11 @@
 All notable changes to Quillwright are listed here. Versions follow
 [semantic versioning](https://semver.org).
 
+## Unreleased
+
+- Fixed: a long project name in the sidebar ran under the **Open…** and **Home** buttons.
+  It is now cut short with "…" (hover it for the full path).
+
 ## 0.5.0 (2026-10-22)
 
 - **Research material.** A `research/` folder in the project is listed in the sidebar, and
