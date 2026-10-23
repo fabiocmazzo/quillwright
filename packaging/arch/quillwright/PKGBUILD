@@ -1,6 +1,6 @@
 # Maintainer: Fabio Covolo Mazzo <fabiomazzo at gmail dot com>
 pkgname=quillwright
-pkgver=0.5.0
+pkgver=0.6.0
 pkgrel=1
 pkgdesc='Writing environment for novels and long-form fiction in plain Markdown, designed to run alongside AI agents'
 arch=('x86_64' 'aarch64')

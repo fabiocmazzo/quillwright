@@ -18,7 +18,7 @@ panel that calls an external AI CLI.
 It started as a fork of [md-echo](https://github.com/fibnas/md-echo) (MIT). The repository is
 `github.com/fabiocmazzo/quillwright`.
 
-**Status (October 2026):** version 0.5.0 (research files and PDFs, project search, legal cases), on egui 0.37. Version 0.2.0 introduced the built-in
+**Status (October 2026):** version 0.6.0 (interface in English, Portuguese, Spanish, and Chinese), on egui 0.37. Version 0.2.0 introduced the built-in
 pure-Rust exporter (0.1.0 used pandoc). CI passes on Linux, Windows, and macOS. Releases are built by
 GitHub Actions as drafts; the Windows and macOS packages have not been tested on real machines
 yet.
@@ -60,7 +60,7 @@ cargo run                                # debug build
 cargo run --release -- path/to/file.md   # open a file directly
 cargo test                               # 104 unit tests, about 1 s
 cargo fmt && cargo clippy --all-targets --locked -- -D warnings
-packaging/linux/build.sh 0.5.0           # AppImage + .tar.gz in dist/ (after a release build)
+packaging/linux/build.sh 0.6.0           # AppImage + .tar.gz in dist/ (after a release build)
 packaging/linux/install-local.sh         # install the release build, menu entry, and icon in ~/.local
 ```
 

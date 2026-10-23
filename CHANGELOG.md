@@ -3,7 +3,7 @@
 All notable changes to Quillwright are listed here. Versions follow
 [semantic versioning](https://semver.org).
 
-## Unreleased
+## 0.6.0 (2026-10-23)
 
 - New: the interface is available in Portuguese (Brazil), Spanish, and Simplified Chinese,
   as well as English. It follows the system's language; **View → Interface Language**
