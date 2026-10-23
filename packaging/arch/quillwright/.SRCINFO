@@ -1,6 +1,6 @@
 pkgbase = quillwright
 	pkgdesc = Writing environment for novels and long-form fiction in plain Markdown, designed to run alongside AI agents
-	pkgver = 0.4.0
+	pkgver = 0.5.0
 	pkgrel = 1
 	url = https://github.com/fabiocmazzo/quillwright
 	arch = x86_64
@@ -23,7 +23,7 @@ pkgbase = quillwright
 	optdepends = hunspell-es_any: Spanish spelling dictionary (other hunspell-* packages work too)
 	optdepends = claude-code: assistant backend
 	optdepends = ollama: local assistant backend
-	source = quillwright-0.4.0.tar.gz::https://github.com/fabiocmazzo/quillwright/archive/refs/tags/v0.4.0.tar.gz
-	sha256sums = da0d4d8ef70c4b85bec23dc45116a0406a167365b0fe486ab7b65ce265735107
+	source = quillwright-0.5.0.tar.gz::https://github.com/fabiocmazzo/quillwright/archive/refs/tags/v0.5.0.tar.gz
+	sha256sums = 271dd2a2f64155bd6932d10338cbc64bba6f77b4e0347068259a6b48ef7519db
 
 pkgname = quillwright
