@@ -14,7 +14,7 @@ optdepends=('hunspell-en_us: more English spelling dictionaries'
             'claude-code: assistant backend'
             'ollama: local assistant backend')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('271dd2a2f64155bd6932d10338cbc64bba6f77b4e0347068259a6b48ef7519db')
+sha256sums=('b719ec72ebaeda1546cc4dd0107d28efa361c8129db98772030552814acf7921')
 
 prepare() {
   cd "$pkgname-$pkgver"

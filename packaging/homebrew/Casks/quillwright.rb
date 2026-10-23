@@ -1,6 +1,6 @@
 cask "quillwright" do
-  version "0.5.0"
-  sha256 "7bba1c40b51785e62be943dea1bf31fbd1a1867a7691d963fc187af9c3ce4563"
+  version "0.6.0"
+  sha256 "65d1eda4c666ba7dc12dabc4fc7fbe12cb8d99f37b1ab3e0a006b8d3e06c9184"
 
   url "https://github.com/fabiocmazzo/quillwright/releases/download/v#{version}/Quillwright-#{version}-macos-universal.dmg"
   name "Quillwright"
