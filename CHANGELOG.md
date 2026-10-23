@@ -5,6 +5,9 @@ All notable changes to Quillwright are listed here. Versions follow
 
 ## Unreleased
 
+- The AppImage carries update information, so AppImageUpdate and similar tools can update
+  it from GitHub releases, downloading only what changed (the release adds a `.zsync`
+  file next to it).
 - Fixed: a long project name in the sidebar ran under the **Open…** and **Home** buttons.
   It is now cut short with "…" (hover it for the full path).
 

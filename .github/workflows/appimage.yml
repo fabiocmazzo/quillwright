@@ -43,7 +43,10 @@ jobs:
             import -window root /dist/screenshot.png
             if ! kill -0 $app; then echo "Quillwright exited early:"; cat /dist/app.log; exit 1; fi
             xwininfo -root -tree | grep -i quillwright || { echo "No Quillwright window"; cat /dist/app.log; exit 1; }
-            cat /dist/app.log'
+            cat /dist/app.log
+            info=$(/dist/Quillwright-0.0.0-test-x86_64.AppImage --appimage-updateinformation)
+            echo "Update information: $info"
+            case "$info" in gh-releases-zsync\|fabiocmazzo\|quillwright\|latest\|*) ;; *) exit 1;; esac'
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -51,6 +54,7 @@ jobs:
           name: appimage
           path: |
             dist/*.AppImage
+            dist/*.zsync
             dist/screenshot.png
             dist/app.log
           if-no-files-found: ignore

@@ -65,8 +65,14 @@ if [ -z "$tool" ]; then
     "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$arch.AppImage"
   chmod +x "$tool"
 fi
+# Update information: AppImageUpdate and similar tools look for the newest GitHub release
+# and download only the changed blocks, using the .zsync file that appimagetool writes
+# next to the AppImage (the release workflow attaches everything in dist/).
+update="gh-releases-zsync|fabiocmazzo|quillwright|latest|Quillwright-*-$arch.AppImage.zsync"
 # Extract-and-run avoids needing FUSE on build machines.
-APPIMAGE_EXTRACT_AND_RUN=1 ARCH=$arch "$tool" --no-appstream "$appdir" \
-  "$dist/Quillwright-$version-$arch.AppImage"
+(cd "$dist" && APPIMAGE_EXTRACT_AND_RUN=1 ARCH=$arch "$tool" --no-appstream -u "$update" \
+  "$appdir" "Quillwright-$version-$arch.AppImage")
+[ -f "$dist/Quillwright-$version-$arch.AppImage.zsync" ] ||
+  { echo "appimagetool did not write the .zsync file" >&2; exit 1; }
 
 ls -l "$dist"
