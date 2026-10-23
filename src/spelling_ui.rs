@@ -1,5 +1,6 @@
 //! Spelling in the app: the editor's context menu, the View menu, and keeping the
 //! dictionary in step with the project.
+use crate::i18n::t;
 use crate::{spelling, MarkdownApp};
 use eframe::egui::{self, RichText, Ui};
 
@@ -46,12 +47,12 @@ impl MarkdownApp {
                     && !self.spelling.is_correct(word)
             });
         let Some((range, word)) = target else {
-            ui.label(RichText::new("No spelling suggestions").weak());
+            ui.label(RichText::new(t!("spelling-none")).weak());
             return;
         };
         let suggestions = self.spelling.suggestions(&word);
         if suggestions.is_empty() {
-            ui.label(RichText::new("No suggestions").weak());
+            ui.label(RichText::new(t!("spelling-no-suggestions")).weak());
         }
         for suggestion in suggestions {
             if ui.button(RichText::new(&suggestion).strong()).clicked() {
@@ -63,22 +64,24 @@ impl MarkdownApp {
         }
         ui.separator();
         if ui
-            .button("Add to Project Dictionary")
-            .on_hover_text(format!(
-                "Adds “{word}” to {} in the project folder",
-                spelling::PROJECT_WORDS_FILE
+            .button(t!("spelling-add"))
+            .on_hover_text(t!(
+                "spelling-add.hint",
+                word = word.as_str(),
+                file = spelling::PROJECT_WORDS_FILE
             ))
             .clicked()
         {
             if let Err(err) = self.spelling.add_to_project(&word) {
-                self.show_tool_message(format!(
-                    "Could not update {}: {err}",
-                    spelling::PROJECT_WORDS_FILE
+                self.show_tool_message(t!(
+                    "spelling-add-failed",
+                    file = spelling::PROJECT_WORDS_FILE,
+                    error = err.to_string()
                 ));
             }
             ui.close();
         }
-        if ui.button("Ignore for This Session").clicked() {
+        if ui.button(t!("spelling-ignore")).clicked() {
             self.spelling.ignore(&word);
             ui.close();
         }
@@ -88,8 +91,8 @@ impl MarkdownApp {
     pub(crate) fn spelling_menu(&mut self, ui: &mut Ui) {
         let mut enabled = self.config.spelling.enabled;
         if ui
-            .checkbox(&mut enabled, "Check Spelling")
-            .on_hover_text("Underline misspelled words; right-click one for suggestions")
+            .checkbox(&mut enabled, t!("spelling-check"))
+            .on_hover_text(t!("spelling-check.hint"))
             .changed()
         {
             self.config.spelling.enabled = enabled;
@@ -97,7 +100,9 @@ impl MarkdownApp {
             self.refresh_spelling();
         }
         ui.add_enabled_ui(enabled, |ui| {
-            ui.menu_button("Spelling Language", |ui| self.spelling_language_menu(ui));
+            ui.menu_button(t!("spelling-language"), |ui| {
+                self.spelling_language_menu(ui)
+            });
         });
     }
 
@@ -113,9 +118,9 @@ impl MarkdownApp {
         let current = spelling::resolve_language(&self.config.spelling.language, &self.working_dir);
         ui.label(
             RichText::new(if in_project {
-                "This book (saved in metadata.yaml)"
+                t!("spelling-language-book")
             } else {
-                "Default for books without a language"
+                t!("spelling-language-default")
             })
             .small()
             .weak(),
@@ -140,26 +145,33 @@ impl MarkdownApp {
         }
         ui.separator();
         let status = if self.spelling.is_loading() {
-            format!("Loading {}…", self.spelling.language)
+            t!(
+                "spelling-loading",
+                language = self.spelling.language.as_str()
+            )
         } else if let Some(error) = &self.spelling.error {
             error.clone()
         } else {
-            format!("Checking {}", self.spelling.language)
+            t!(
+                "spelling-checking",
+                language = self.spelling.language.as_str()
+            )
         };
         ui.label(RichText::new(status).small().weak());
         if let Some(dir) = spelling::user_dictionary_dir() {
             if ui
-                .button("Open Dictionaries Folder")
-                .on_hover_text(format!(
-                    "Add Hunspell .aff and .dic files here for more languages:\n{}",
-                    dir.display()
-                ))
+                .button(t!("spelling-folder"))
+                .on_hover_text(t!("spelling-folder.hint", path = dir.display().to_string()))
                 .clicked()
             {
                 if let Err(err) = std::fs::create_dir_all(&dir)
                     .and_then(|_| crate::reference_ui::open_with_system(&dir))
                 {
-                    self.show_tool_message(format!("Could not open {}: {err}", dir.display()));
+                    self.show_tool_message(t!(
+                        "open-failed",
+                        path = dir.display().to_string(),
+                        error = err.to_string()
+                    ));
                 }
                 ui.close();
             }

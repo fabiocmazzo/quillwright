@@ -1,7 +1,8 @@
 //! The Export Manuscript window.
+use crate::i18n::t;
 use crate::{
     export::{self, Format, PageSize},
-    manuscript, theme, MarkdownApp,
+    theme, MarkdownApp,
 };
 use eframe::egui;
 use egui::{Context, RichText};
@@ -78,6 +79,7 @@ impl MarkdownApp {
         }
         let p = theme::current(ctx);
         let chapters = self.index.documents.len();
+        let kind = self.kind;
         let open_words = self
             .file_path
             .as_deref()
@@ -89,7 +91,7 @@ impl MarkdownApp {
         let mut start = false;
         let mut reveal = None;
         let state = &mut self.export;
-        egui::Window::new("Export Manuscript")
+        egui::Window::new(t!("export-title"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -100,21 +102,18 @@ impl MarkdownApp {
                     .num_columns(2)
                     .spacing([12.0, 8.0])
                     .show(ui, |ui| {
-                        ui.label("Title");
+                        ui.label(t!("export-book-title"));
                         ui.text_edit_singleline(&mut state.title);
                         ui.end_row();
-                        ui.label("Author");
+                        ui.label(t!("export-author"));
                         ui.text_edit_singleline(&mut state.author);
                         ui.end_row();
-                        ui.label("Language");
+                        ui.label(t!("export-language"));
                         ui.add(
                             egui::TextEdit::singleline(&mut state.language)
                                 .hint_text("en, pt-BR, es…"),
                         )
-                        .on_hover_text(
-                            "Used for hyphenation and by e-readers. \
-                             Empty: the lang in metadata.yaml, or English.",
-                        );
+                        .on_hover_text(t!("export-language.hint"));
                         ui.end_row();
                     });
                 ui.add_space(8.0);
@@ -131,7 +130,7 @@ impl MarkdownApp {
                 if state.format.has_pages() {
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        ui.label("Page size");
+                        ui.label(t!("export-page-size"));
                         egui::ComboBox::from_id_salt("export_page_size")
                             .selected_text(state.page_size.label())
                             .show_ui(ui, |ui| {
@@ -142,16 +141,16 @@ impl MarkdownApp {
                     });
                 }
                 ui.add_space(4.0);
-                ui.checkbox(&mut state.table_of_contents, "Table of contents");
+                ui.checkbox(&mut state.table_of_contents, t!("export-toc"));
                 ui.add_space(8.0);
 
-                let mut notes = vec![format!(
-                    "{chapters} chapter{} · {} words, in sidebar order",
-                    if chapters == 1 { "" } else { "s" },
-                    manuscript::group(words)
+                let mut notes = vec![t!(
+                    "export-summary",
+                    documents = kind.documents.count(chapters),
+                    words = crate::workspace::words(words)
                 )];
                 if project.join(export::METADATA_FILE).is_file() {
-                    notes.push(format!("Uses {}", export::METADATA_FILE));
+                    notes.push(t!("export-uses", file = export::METADATA_FILE));
                 }
                 let reference = match state.format {
                     Format::Docx => Some(export::REFERENCE_DOCX),
@@ -159,7 +158,7 @@ impl MarkdownApp {
                     _ => None,
                 };
                 if let Some(name) = reference.filter(|n| project.join(n).is_file()) {
-                    notes.push(format!("Styles from {name}"));
+                    notes.push(t!("export-styles", file = name));
                 }
                 for note in notes {
                     ui.label(RichText::new(note).size(12.5).color(p.muted));
@@ -169,11 +168,11 @@ impl MarkdownApp {
                 if state.running.is_some() {
                     ui.horizontal(|ui| {
                         ui.spinner();
-                        ui.label("Exporting…");
+                        ui.label(t!("export-running"));
                     });
                 } else if ui
-                    .add_enabled(chapters > 0, egui::Button::new("Export…"))
-                    .on_disabled_hover_text("No chapters found in the chapters folder")
+                    .add_enabled(chapters > 0, egui::Button::new(t!("export-start")))
+                    .on_disabled_hover_text(t!("export-nothing"))
                     .clicked()
                 {
                     start = true;
@@ -183,12 +182,14 @@ impl MarkdownApp {
                     Some(Outcome::Done { path, warnings }) => {
                         ui.separator();
                         let name = path.file_name().unwrap_or_default().to_string_lossy();
-                        ui.label(RichText::new(format!("Exported {name}")).color(p.accent));
+                        ui.label(
+                            RichText::new(t!("export-done", file = name.as_ref())).color(p.accent),
+                        );
                         ui.horizontal(|ui| {
-                            if ui.button("Open").clicked() {
+                            if ui.button(t!("export-open")).clicked() {
                                 reveal = Some(path.clone());
                             }
-                            if ui.button("Show in Folder").clicked() {
+                            if ui.button(t!("export-show")).clicked() {
                                 reveal = path.parent().map(PathBuf::from);
                             }
                         });
@@ -216,7 +217,11 @@ impl MarkdownApp {
         if let Some(path) = reveal {
             if let Err(err) = export::open_with_system(&path) {
                 self.export.outcome = Some(Outcome::Failed {
-                    error: format!("Could not open {}: {err}", path.display()),
+                    error: t!(
+                        "open-failed",
+                        path = path.display().to_string(),
+                        error = err.to_string()
+                    ),
                 });
             }
         }
@@ -246,7 +251,7 @@ impl MarkdownApp {
         let Some(mut output) = FileDialog::new()
             .set_directory(export::default_directory(&project, last_dir.as_ref()))
             .set_file_name(&export::default_file_name(&title, format))
-            .add_filter(format.label(), &[format.extension()])
+            .add_filter(&format.label(), &[format.extension()])
             .save_file()
         else {
             return;
@@ -290,7 +295,11 @@ impl MarkdownApp {
                         warnings: out.warnings,
                     },
                     Err(err) => Outcome::Failed {
-                        error: format!("Could not save {}: {err}", output.display()),
+                        error: t!(
+                            "export-save-failed",
+                            path = output.display().to_string(),
+                            error = err.to_string()
+                        ),
                     },
                 },
                 Err(error) => Outcome::Failed { error },
@@ -310,7 +319,7 @@ impl MarkdownApp {
             Ok(outcome) => outcome,
             Err(mpsc::TryRecvError::Empty) => return,
             Err(mpsc::TryRecvError::Disconnected) => Outcome::Failed {
-                error: "The export stopped unexpectedly.".into(),
+                error: t!("export-stopped"),
             },
         };
         self.export.outcome = Some(outcome);

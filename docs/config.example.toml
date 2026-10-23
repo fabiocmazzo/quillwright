@@ -45,6 +45,9 @@ autosave = true
 autosave_delay = 2.0
 
 [view]
+# Interface language: "en", "pt-BR", "es", or "zh-CN" (View → Interface Language).
+# Empty follows the system's language, and English when it is not one of these.
+language = ""
 # Show the manuscript sidebar (Ctrl+B).
 sidebar = true
 # Words to write per session; shown as a progress bar in the status bar. 0 hides it.

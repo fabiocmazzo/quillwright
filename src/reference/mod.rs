@@ -42,14 +42,14 @@ impl Kind {
     }
 
     /// A short label for the sidebar.
-    pub fn label(self) -> &'static str {
-        match self {
-            Kind::Text => "Text",
-            Kind::Markdown => "Notes",
-            Kind::Image => "Image",
-            Kind::Pdf => "PDF",
-            Kind::Other => "File",
-        }
+    pub fn label(self) -> String {
+        crate::i18n::t!(match self {
+            Kind::Text => "file-text",
+            Kind::Markdown => "file-notes",
+            Kind::Image => "file-image",
+            Kind::Pdf => "file-pdf",
+            Kind::Other => "file-other",
+        })
     }
 
     /// Text and Markdown can also be opened in the editor.
@@ -116,9 +116,9 @@ pub fn load(path: &Path) -> Result<Content, String> {
         Kind::Pdf => {
             pdf::Document::open(path, text::default_cache_dir().as_deref()).map(Content::Pdf)
         }
-        Kind::Other => Ok(Content::Unsupported(
-            "Quillwright can't show this kind of file.".into(),
-        )),
+        Kind::Other => Ok(Content::Unsupported(crate::i18n::t!(
+            "reference-unsupported"
+        ))),
     }
 }
 
@@ -129,7 +129,7 @@ fn read_text(path: &Path) -> Result<String, String> {
     let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
     let mut text = String::from_utf8_lossy(bytes).into_owned();
     if cut {
-        text.push_str("\n\n[… the rest of this file is not shown]");
+        text.push_str(&format!("\n\n[… {}]", crate::i18n::t!("reference-cut")));
     }
     Ok(text)
 }

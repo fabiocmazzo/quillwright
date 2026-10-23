@@ -190,7 +190,7 @@ pub fn set_project_language(project_root: &Path, language: &str) -> Result<(), S
     };
     let text = with_language(&existing, &language.replace('_', "-"));
     crate::file_sync::write_checked(&path, &text, None)
-        .map_err(|_| format!("Could not write {}", path.display()))
+        .map_err(|_| crate::i18n::t!("write-failed", path = path.display().to_string()))
 }
 
 /// Byte ranges of the words in `text`. Apostrophes and hyphens inside a word are kept
@@ -268,7 +268,10 @@ impl Speller {
                 Some((aff, dic)) => {
                     spellbook::Dictionary::new(&aff, &dic).map_err(|e| e.to_string())
                 }
-                None => Err(format!("No dictionary for {language}")),
+                None => Err(crate::i18n::t!(
+                    "spelling-no-dictionary",
+                    language = language.as_str()
+                )),
             };
             let _ = sender.send(result);
         });
@@ -293,7 +296,10 @@ impl Speller {
             Err(mpsc::TryRecvError::Empty) => false,
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.loading = None;
-                self.error = Some(format!("Could not load the {} dictionary", self.language));
+                self.error = Some(crate::i18n::t!(
+                    "spelling-load-failed",
+                    language = self.language.as_str()
+                ));
                 true
             }
         }

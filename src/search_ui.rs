@@ -1,4 +1,5 @@
 //! The project search field at the top of the sidebar, and its results.
+use crate::i18n::t;
 use crate::{
     reference,
     search::{Hit, Location, Results, Searcher, Source, SourceKind},
@@ -150,7 +151,7 @@ impl MarkdownApp {
     pub(crate) fn search_field(&mut self, ui: &mut Ui, p: &theme::Palette) {
         let response = ui.add(
             TextEdit::singleline(&mut self.search.query)
-                .hint_text("Search project (Ctrl+Shift+H)")
+                .hint_text(format!("{} (Ctrl+Shift+H)", t!("search-hint")))
                 .desired_width(f32::INFINITY),
         );
         if std::mem::take(&mut self.search.focus) {
@@ -179,23 +180,23 @@ impl MarkdownApp {
             .as_ref()
             .filter(|r| r.generation == self.search.generation)
         else {
-            return "Searching…".into();
+            return t!("search-searching");
         };
         let mut status = match (results.total(), results.files.len()) {
-            (0, _) if results.done => "No results".to_string(),
-            (0, _) => "Searching…".to_string(),
-            (1, _) => "1 result".to_string(),
-            (n, 1) => format!("{n} results in 1 file"),
-            (n, files) => format!("{n} results in {files} files"),
+            (0, _) if results.done => t!("search-none"),
+            (0, _) => t!("search-searching"),
+            (n, files) => t!("search-results", count = n, files = files),
         };
         if let Some(title) = &results.reading {
-            status.push_str(&format!(" · reading {title} for the first time…"));
+            status.push_str(" · ");
+            status.push_str(&t!("search-reading", title = title.as_str()));
         } else if !results.done && results.total() > 0 {
-            status.push_str(" · searching…");
+            status.push_str(" · ");
+            status.push_str(&t!("search-more"));
         }
         if results.failed > 0 {
-            let s = if results.failed == 1 { "" } else { "s" };
-            status.push_str(&format!(" · {} file{s} could not be read", results.failed));
+            status.push_str(" · ");
+            status.push_str(&t!("search-failed", count = results.failed));
         }
         status
     }
@@ -219,9 +220,13 @@ impl MarkdownApp {
                 )
                 .on_hover_text(file.source.path.display().to_string());
                 ui.label(
-                    RichText::new(format!("{} · {}", file.source.kind.label(), file.total))
-                        .size(11.5)
-                        .color(p.muted),
+                    RichText::new(format!(
+                        "{} · {}",
+                        self.source_label(file.source.kind),
+                        file.total
+                    ))
+                    .size(11.5)
+                    .color(p.muted),
                 );
             });
             for hit in &file.hits {
@@ -239,7 +244,7 @@ impl MarkdownApp {
             }
             if file.total > file.hits.len() {
                 ui.label(
-                    RichText::new(format!("…and {} more", file.total - file.hits.len()))
+                    RichText::new(t!("search-and-more", count = file.total - file.hits.len()))
                         .size(12.0)
                         .italics()
                         .color(p.muted),
@@ -247,6 +252,17 @@ impl MarkdownApp {
             }
         }
         action
+    }
+
+    /// What kind of file a result is in: "Chapter", "Note".
+    fn source_label(&self, kind: SourceKind) -> String {
+        let noun = |section: &crate::kinds::Section| crate::kinds::capitalize(&section.noun().0);
+        match kind {
+            SourceKind::Chapter => noun(&self.kind.documents),
+            SourceKind::Character => noun(&self.kind.sheets),
+            SourceKind::Note => t!("search-note"),
+            SourceKind::Research => self.kind.research.label(),
+        }
     }
 
     pub(crate) fn apply_search_action(&mut self, action: Option<SearchAction>) {
@@ -279,7 +295,7 @@ fn hit_row(ui: &mut Ui, hit: &Hit, p: &theme::Palette) -> egui::Response {
     let mut job = LayoutJob::default();
     let place = match hit.location {
         Location::Line(line) => format!("{line}  "),
-        Location::Page(page) => format!("p. {}  ", page + 1),
+        Location::Page(page) => format!("{}  ", t!("search-page", page = page + 1)),
     };
     job.append(&place, 0.0, plain(p.muted));
     job.append(&hit.before, 0.0, plain(theme::mix(p.text, p.muted, 0.45)));

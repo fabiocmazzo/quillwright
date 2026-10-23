@@ -5,6 +5,12 @@ All notable changes to Quillwright are listed here. Versions follow
 
 ## Unreleased
 
+- New: the interface is available in Portuguese (Brazil), Spanish, and Simplified Chinese,
+  as well as English. It follows the system's language; **View → Interface Language**
+  chooses another one (`[view] language` in the config). Translations are Fluent files in
+  `assets/locales/`, and new languages need no code beyond one line in `src/i18n.rs`.
+- Changed: word counts use the digit grouping of the interface language ("12.345" in
+  Portuguese and Spanish).
 - The AppImage carries update information, so AppImageUpdate and similar tools can update
   it from GitHub releases, downloading only what changed (the release adds a `.zsync`
   file next to it).

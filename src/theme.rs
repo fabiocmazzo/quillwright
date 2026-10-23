@@ -29,12 +29,12 @@ impl Preset {
         }
     }
 
-    pub fn label(self) -> &'static str {
-        match self {
-            Preset::Paper => "Paper",
-            Preset::Sepia => "Sepia",
-            Preset::Night => "Night",
-        }
+    pub fn label(self) -> String {
+        crate::i18n::t!(match self {
+            Preset::Paper => "theme-paper",
+            Preset::Sepia => "theme-sepia",
+            Preset::Night => "theme-night",
+        })
     }
 
     pub fn palette(self) -> Palette {

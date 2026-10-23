@@ -125,6 +125,8 @@ impl Meta {
             "de" => "Inhalt",
             "it" => "Indice",
             "nl" => "Inhoud",
+            "zh" => "目录",
+            "ja" => "目次",
             _ => "Contents",
         }
     }
@@ -268,7 +270,10 @@ impl ImageCache {
         }
         let found = self.load(src);
         if found.is_none() {
-            self.warnings.push(format!("Image not included: {src}"));
+            self.warnings.push(crate::i18n::t!(
+                "export-image-skipped",
+                file = src.to_string()
+            ));
         }
         self.by_path.insert(src.to_string(), found);
         found

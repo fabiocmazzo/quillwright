@@ -3,7 +3,6 @@ language_name = "English"
 # A project with any of these is a legal case in English.
 detect = ["filings/", "parties/", "facts.md"]
 first_file = "filings/001-complaint.md"
-new_project_note = "Creates filings/, parties/, facts.md, timeline.md, evidence.md, client-questions.md and AGENT.md."
 
 [research]
 folder = "case-files"
@@ -22,23 +21,19 @@ template = "parties/client.md"
 [[assistant.context]]
 file = "facts.md"
 heading = "Facts"
-summary = "facts"
 limit = 40000
 
 [[assistant.context]]
 file = "timeline.md"
 heading = "Timeline"
-summary = "timeline"
 limit = 16000
 
 [[assistant.context]]
 file = "evidence.md"
 heading = "Evidence"
-summary = "evidence list"
 limit = 16000
 
 [[assistant.context]]
 file = "client-questions.md"
 heading = "Client questions"
-summary = "client questions"
 limit = 12000

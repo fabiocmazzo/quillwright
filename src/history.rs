@@ -145,12 +145,14 @@ pub fn time_label(time: SystemTime, now: SystemTime) -> String {
 fn when(time: chrono::NaiveDateTime, now: chrono::NaiveDateTime) -> String {
     use chrono::Datelike;
     let days = (now.date() - time.date()).num_days();
-    let clock = time.format("%H:%M");
+    let clock = time.format("%H:%M").to_string();
+    // Dates are written with the chrono formats each language gives.
+    let date = |key: &str| time.format(&crate::i18n::t!(key)).to_string();
     match days {
-        0 => format!("Today {clock}"),
-        1 => format!("Yesterday {clock}"),
-        _ if time.year() == now.year() => time.format("%a %-d %b %H:%M").to_string(),
-        _ => time.format("%-d %b %Y %H:%M").to_string(),
+        0 => crate::i18n::t!("history-today", time = clock),
+        1 => crate::i18n::t!("history-yesterday", time = clock),
+        _ if time.year() == now.year() => date("history-this-year"),
+        _ => date("history-older"),
     }
 }
 

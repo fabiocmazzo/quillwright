@@ -2,7 +2,9 @@
 //! and accept / discard of suggestions.
 use crate::{
     assistant::{self, Action, ResultKind},
-    fonts, manuscript, theme, MarkdownApp,
+    fonts, i18n,
+    i18n::t,
+    manuscript, theme, MarkdownApp,
 };
 use eframe::egui;
 use egui::{
@@ -102,7 +104,7 @@ impl MarkdownApp {
             Ok(()) => {
                 let text = assistant::clean_output(&job.output);
                 if text.is_empty() {
-                    state.error = Some("The assistant returned an empty answer.".into());
+                    state.error = Some(t!("assistant-empty-answer"));
                 } else {
                     state.result = Some(text);
                 }
@@ -138,7 +140,7 @@ impl MarkdownApp {
         let has_selection = self.selection_start != self.selection_end;
         if action.needs_selection() && !has_selection {
             self.assistant.open = true;
-            self.assistant.error = Some("Select a passage in the editor first.".into());
+            self.assistant.error = Some(t!("assistant-select-first"));
             return;
         }
         let selected = self.selected_text().unwrap_or_default();
@@ -188,12 +190,16 @@ impl MarkdownApp {
                 state.request = Some(request);
             }
             Err(err) => {
-                let hint = if err.kind() == std::io::ErrorKind::NotFound {
-                    " Is it installed and on your PATH? Check the assistant settings."
-                } else {
-                    ""
-                };
-                state.error = Some(format!("Could not start `{}`: {err}.{hint}", command[0]));
+                let mut message = t!(
+                    "assistant-start-failed",
+                    tool = command[0].as_str(),
+                    error = err.to_string()
+                );
+                if err.kind() == std::io::ErrorKind::NotFound {
+                    message.push(' ');
+                    message.push_str(&t!("assistant-not-found"));
+                }
+                state.error = Some(message);
             }
         }
     }
@@ -214,20 +220,20 @@ impl MarkdownApp {
             .show(root, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new("Assistant")
+                        RichText::new(t!("assistant-title"))
                             .font(FontId::new(19.0, fonts::family(true, false)))
                             .color(p.text),
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if quiet(ui, "Close", &p).clicked() {
+                        if quiet(ui, &t!("button-close"), &p).clicked() {
                             action = Some(PanelAction::Close);
                         }
                         let label = if self.assistant.show_settings {
-                            "Done"
+                            t!("assistant-done")
                         } else {
-                            "Settings"
+                            t!("assistant-settings")
                         };
-                        if quiet(ui, label, &p).clicked() {
+                        if quiet(ui, &label, &p).clicked() {
                             let state = &mut self.assistant;
                             state.show_settings = !state.show_settings;
                         }
@@ -266,17 +272,16 @@ impl MarkdownApp {
                 state.prompt_as_argument = self.config.assistant.prompt_as_argument;
             }
         }
-        muted(
-            ui,
-            "Quillwright runs an AI tool installed on your computer and shows its answer \
-             here. Your manuscript only changes when you accept a suggestion.",
-            p,
-        );
+        muted(ui, &t!("assistant-intro"), p);
         ui.add_space(8.0);
-        heading(ui, "Choose a tool", p);
+        heading(ui, &t!("assistant-choose-tool"), p);
         ui.horizontal_wrapped(|ui| {
             for preset in assistant::PRESETS {
-                if ui.button(preset.name).on_hover_text(preset.note).clicked() {
+                if ui
+                    .button(preset.name)
+                    .on_hover_text(t!(preset.note))
+                    .clicked()
+                {
                     let parts: Vec<String> = preset.command.iter().map(|s| s.to_string()).collect();
                     state.command_line = assistant::join_command(&parts);
                     state.prompt_as_argument = preset.prompt_as_argument;
@@ -284,7 +289,7 @@ impl MarkdownApp {
             }
         });
         ui.add_space(6.0);
-        heading(ui, "Command", p);
+        heading(ui, &t!("assistant-command"), p);
         ui.add(
             egui::TextEdit::singleline(&mut state.command_line)
                 .font(egui::TextStyle::Monospace)
@@ -293,16 +298,12 @@ impl MarkdownApp {
         );
         ui.checkbox(
             &mut state.prompt_as_argument,
-            "Pass the prompt as the last argument (default: stdin)",
+            t!("assistant-prompt-argument"),
         );
-        muted(
-            ui,
-            "The command runs in the project folder. Login and API keys stay with the tool.",
-            p,
-        );
+        muted(ui, &t!("assistant-command-note"), p);
         ui.add_space(4.0);
         if ui
-            .add(Button::new(RichText::new("Save").color(p.page)).fill(p.accent))
+            .add(Button::new(RichText::new(t!("button-save")).color(p.page)).fill(p.accent))
             .clicked()
         {
             *action = Some(PanelAction::SaveSettings);
@@ -316,9 +317,11 @@ impl MarkdownApp {
         action: &mut Option<PanelAction>,
     ) {
         if self.file_path.is_none() && self.content.trim().is_empty() {
-            let open = format!(
-                "Open a {} to work with the assistant.",
-                self.kind.documents.singular
+            let (document, gender) = self.kind.documents.noun();
+            let open = t!(
+                "assistant-open-document",
+                document = document,
+                gender = gender
             );
             muted(ui, &open, p);
             return;
@@ -332,9 +335,13 @@ impl MarkdownApp {
             0
         };
         let target = if has_selection {
-            format!("{} words selected", manuscript::group(selected_words))
+            t!(
+                "assistant-selected",
+                words = i18n::group(selected_words),
+                count = selected_words
+            )
         } else {
-            format!("cursor on line {}", self.current_line + 1)
+            t!("assistant-cursor", line = self.current_line + 1)
         };
         muted(ui, &format!("“{}” · {target}", self.document_title()), p);
         ui.add_space(6.0);
@@ -345,18 +352,17 @@ impl MarkdownApp {
             for (i, act) in self.kind.assistant.actions.iter().enumerate() {
                 let enabled = !running && (!act.needs_selection || has_selection);
                 let tip = if act.needs_selection && !has_selection {
-                    "Select a passage first"
+                    t!("assistant-needs-selection")
                 } else {
-                    act.hint.as_str()
+                    act.hint()
                 };
                 let ui = &mut cols[i % 2];
                 if ui
                     .add_enabled(
                         enabled,
-                        Button::new(act.label.as_str())
-                            .min_size(egui::vec2(ui.available_width(), 30.0)),
+                        Button::new(act.label()).min_size(egui::vec2(ui.available_width(), 30.0)),
                     )
-                    .on_hover_text(tip)
+                    .on_hover_text(&tip)
                     .on_disabled_hover_text(tip)
                     .clicked()
                 {
@@ -367,7 +373,7 @@ impl MarkdownApp {
         ui.add_space(6.0);
         let response = ui.add(
             egui::TextEdit::multiline(&mut self.assistant.instruction)
-                .hint_text(self.kind.assistant.ask_hint.as_str())
+                .hint_text(self.kind.ask_hint())
                 .desired_rows(3)
                 .desired_width(f32::INFINITY),
         );
@@ -380,7 +386,10 @@ impl MarkdownApp {
         ui.horizontal(|ui| {
             let can_ask = !running && !self.assistant.instruction.trim().is_empty();
             if ui
-                .add_enabled(can_ask, Button::new("Ask  (Ctrl+Enter)"))
+                .add_enabled(
+                    can_ask,
+                    Button::new(format!("{}  (Ctrl+Enter)", t!("assistant-ask"))),
+                )
                 .clicked()
                 || (ctrl_enter && can_ask)
             {
@@ -412,14 +421,17 @@ impl MarkdownApp {
             context.clips = self.assistant.clips.clone();
             context.summary()
         };
-        let document = &self.kind.documents.singular;
-        let sends = if summary.is_empty() {
-            format!("this {document}")
-        } else {
-            format!("this {document}, {summary}")
-        };
+        let (document, gender) = self.kind.documents.noun();
+        let mut sends = t!(
+            "assistant-this-document",
+            document = document,
+            gender = gender
+        );
+        if !summary.is_empty() {
+            sends = format!("{sends}, {summary}");
+        }
         ui.label(
-            RichText::new(format!("Sends {sends} to `{tool}`."))
+            RichText::new(t!("assistant-sends", what = sends, tool = tool))
                 .size(11.5)
                 .color(p.muted),
         );
@@ -427,13 +439,13 @@ impl MarkdownApp {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new("REFERENCE PASSAGES")
+                    RichText::new(t!("assistant-passages").to_uppercase())
                         .size(11.0)
                         .strong()
                         .color(p.muted),
                 );
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if quiet(ui, "Clear", p).clicked() {
+                    if quiet(ui, &t!("assistant-clear"), p).clicked() {
                         *action = Some(PanelAction::ClearClips);
                     }
                 });
@@ -449,7 +461,7 @@ impl MarkdownApp {
                             ui.label(RichText::new(&clip.citation).size(12.0).color(p.text));
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 if quiet(ui, "×", p)
-                                    .on_hover_text("Stop sending this passage")
+                                    .on_hover_text(t!("assistant-remove-passage"))
                                     .clicked()
                                 {
                                     *action = Some(PanelAction::RemoveClip(i));
@@ -475,9 +487,9 @@ impl MarkdownApp {
         if let Some(job) = &state.job {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(RichText::new("Writing…").color(p.muted));
+                ui.label(RichText::new(t!("assistant-writing")).color(p.muted));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui.button("Cancel").clicked() {
+                    if ui.button(t!("button-cancel")).clicked() {
                         *action = Some(PanelAction::Cancel);
                     }
                 });
@@ -489,14 +501,18 @@ impl MarkdownApp {
         if let Some(error) = &state.error {
             ui.colored_label(p.accent, error);
             if !state.details.is_empty() {
-                egui::CollapsingHeader::new(RichText::new("Details").size(12.0).color(p.muted))
-                    .id_salt("assistant_details")
-                    .show(ui, |ui| {
-                        ui.add(
-                            egui::Label::new(RichText::new(&state.details).monospace().size(11.0))
-                                .selectable(true),
-                        );
-                    });
+                egui::CollapsingHeader::new(
+                    RichText::new(t!("assistant-details"))
+                        .size(12.0)
+                        .color(p.muted),
+                )
+                .id_salt("assistant_details")
+                .show(ui, |ui| {
+                    ui.add(
+                        egui::Label::new(RichText::new(&state.details).monospace().size(11.0))
+                            .selectable(true),
+                    );
+                });
             }
         }
         if let (Some(result), Some(request)) = (&state.result, &state.request) {
@@ -504,14 +520,18 @@ impl MarkdownApp {
         }
         if !state.prompt.is_empty() {
             ui.add_space(8.0);
-            egui::CollapsingHeader::new(RichText::new("Prompt sent").size(12.0).color(p.muted))
-                .id_salt("assistant_prompt")
-                .show(ui, |ui| {
-                    ui.add(
-                        egui::Label::new(RichText::new(&state.prompt).monospace().size(11.0))
-                            .selectable(true),
-                    );
-                });
+            egui::CollapsingHeader::new(
+                RichText::new(t!("assistant-prompt-sent"))
+                    .size(12.0)
+                    .color(p.muted),
+            )
+            .id_salt("assistant_prompt")
+            .show(ui, |ui| {
+                ui.add(
+                    egui::Label::new(RichText::new(&state.prompt).monospace().size(11.0))
+                        .selectable(true),
+                );
+            });
         }
     }
 
@@ -524,15 +544,12 @@ impl MarkdownApp {
         action: &mut Option<PanelAction>,
     ) {
         let kind = request.action.result_kind();
-        heading(
-            ui,
-            match kind {
-                ResultKind::Replacement => "Suggested revision",
-                ResultKind::Insertion => "Suggested continuation",
-                ResultKind::Notes => "Answer",
-            },
-            p,
-        );
+        let title = match kind {
+            ResultKind::Replacement => t!("assistant-revision"),
+            ResultKind::Insertion => t!("assistant-continuation"),
+            ResultKind::Notes => t!("assistant-answer"),
+        };
+        heading(ui, &title, p);
         let same_file = request.file.as_ref().map(|f| self.working_dir.join(f)) == self.file_path
             || (request.file.is_none() && self.file_path.is_none());
         egui::Frame::NONE
@@ -555,13 +572,13 @@ impl MarkdownApp {
                 }
             });
         ui.add_space(6.0);
-        let primary = |text: &str| Button::new(RichText::new(text).color(p.page)).fill(p.accent);
+        let primary = |key: &str| Button::new(RichText::new(t!(key)).color(p.page)).fill(p.accent);
         ui.horizontal_wrapped(|ui| {
             let can_replace = same_file && request.start != request.end;
             match kind {
                 ResultKind::Replacement => {
                     if ui
-                        .add_enabled(can_replace, primary("Replace selection"))
+                        .add_enabled(can_replace, primary("assistant-replace"))
                         .clicked()
                     {
                         *action = Some(PanelAction::Replace);
@@ -569,38 +586,34 @@ impl MarkdownApp {
                 }
                 ResultKind::Insertion => {
                     if ui
-                        .add_enabled(same_file, primary("Insert at cursor"))
+                        .add_enabled(same_file, primary("assistant-insert"))
                         .clicked()
                     {
                         *action = Some(PanelAction::Insert);
                     }
                 }
                 ResultKind::Notes if request.action == Action::Ask => {
-                    if can_replace && ui.button("Replace selection").clicked() {
+                    if can_replace && ui.button(t!("assistant-replace")).clicked() {
                         *action = Some(PanelAction::Replace);
                     }
-                    if same_file && ui.button("Insert at cursor").clicked() {
+                    if same_file && ui.button(t!("assistant-insert")).clicked() {
                         *action = Some(PanelAction::Insert);
                     }
                 }
                 ResultKind::Notes => {}
             }
-            if ui.button("Copy").clicked() {
+            if ui.button(t!("button-copy")).clicked() {
                 *action = Some(PanelAction::Copy(result.to_string()));
             }
-            if ui.button("Try again").clicked() {
+            if ui.button(t!("assistant-retry")).clicked() {
                 *action = Some(PanelAction::Retry);
             }
-            if ui.button("Discard").clicked() {
+            if ui.button(t!("button-discard")).clicked() {
                 *action = Some(PanelAction::Discard);
             }
         });
         if !same_file {
-            muted(
-                ui,
-                "This answer is for another file; open it again to apply.",
-                p,
-            );
+            muted(ui, &t!("assistant-other-file"), p);
         }
     }
 

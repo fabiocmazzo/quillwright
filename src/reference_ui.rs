@@ -1,5 +1,6 @@
 //! The Reference side panel: research files shown read only beside the page.
 //! See docs/reference-material.md.
+use crate::i18n::t;
 use crate::{
     fonts, live_preview,
     pdf_view::PdfView,
@@ -113,7 +114,7 @@ impl MarkdownApp {
             }
             Err(mpsc::TryRecvError::Disconnected) => {
                 state.loading = None;
-                state.error = Some("The file could not be read.".into());
+                state.error = Some(t!("reference-unreadable"));
                 return;
             }
         };
@@ -144,7 +145,7 @@ impl MarkdownApp {
             }
             Err(error) => {
                 state.shown = None;
-                state.error = Some(format!("This file could not be opened: {error}"));
+                state.error = Some(t!("reference-open-failed", error = error.to_string()));
             }
         }
     }
@@ -165,7 +166,7 @@ impl MarkdownApp {
         }
         if !path.is_file() {
             state.shown = None;
-            state.error = Some("This file was moved or deleted.".into());
+            state.error = Some(t!("reference-missing"));
             return;
         }
         if reference::stamp(&path) != state.stamp {
@@ -180,7 +181,7 @@ impl MarkdownApp {
 
     pub(crate) fn add_research_files(&mut self) {
         let Some(files) = rfd::FileDialog::new()
-            .set_title("Add Research Files")
+            .set_title(&t!("dialog-add-research"))
             .pick_files()
         else {
             return;
@@ -194,7 +195,10 @@ impl MarkdownApp {
                 }
             }
             Err(error) => {
-                self.sync_notice = Some(format!("⚠ Could not add research files: {error}"));
+                self.sync_notice = Some(format!(
+                    "⚠ {}",
+                    t!("reference-add-failed", error = error.to_string())
+                ));
             }
         }
     }
@@ -224,7 +228,7 @@ impl MarkdownApp {
                     .unwrap_or_default();
                 ui.horizontal(|ui| {
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if quiet(ui, "Close", &p).clicked() {
+                        if quiet(ui, &t!("button-close"), &p).clicked() {
                             action = Some(PanelAction::Close);
                         }
                         ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
@@ -243,51 +247,57 @@ impl MarkdownApp {
                 let relative = path.strip_prefix(&self.working_dir).unwrap_or(&path);
                 ui.horizontal_wrapped(|ui| {
                     ui.label(
-                        RichText::new(format!("{} · read only", relative.display()))
-                            .size(12.0)
-                            .color(p.muted),
+                        RichText::new(format!(
+                            "{} · {}",
+                            relative.display(),
+                            t!("reference-read-only")
+                        ))
+                        .size(12.0)
+                        .color(p.muted),
                     );
                 });
                 ui.horizontal(|ui| {
                     if kind.editable()
-                        && quiet(ui, "Edit", &p)
-                            .on_hover_text("Open this file in the editor")
+                        && quiet(ui, &t!("reference-edit"), &p)
+                            .on_hover_text(t!("reference-edit.hint"))
                             .clicked()
                     {
                         action = Some(PanelAction::Edit(path.clone()));
                     }
                     if matches!(self.reference.shown, Some(Shown::Image(_))) {
                         let label = if self.reference.fit_width {
-                            "Actual Size"
+                            t!("reference-actual-size")
                         } else {
-                            "Fit Width"
+                            t!("reference-fit-width")
                         };
-                        if quiet(ui, label, &p).clicked() {
+                        if quiet(ui, &label, &p).clicked() {
                             action = Some(PanelAction::ToggleFit);
                         }
                     }
-                    if quiet(ui, "Open with System Viewer", &p).clicked() {
+                    if quiet(ui, &t!("reference-system-viewer"), &p).clicked() {
                         action = Some(PanelAction::External(path.clone()));
                     }
                 });
                 if let Some((text, place)) = &self.reference.selection {
                     ui.horizontal(|ui| {
                         let citation = format!("{}, {place}", relative.display());
-                        if quiet(ui, "Use as Context", &p)
-                            .on_hover_text(
-                                "Send the selected passage, with its source, to the assistant",
-                            )
+                        if quiet(ui, &t!("reference-use"), &p)
+                            .on_hover_text(t!("reference-use.hint"))
                             .clicked()
                         {
                             action = Some(PanelAction::UseAsContext(citation, text.clone()));
                         }
-                        if quiet(ui, "Copy", &p).clicked() {
+                        if quiet(ui, &t!("button-copy"), &p).clicked() {
                             action = Some(PanelAction::Copy(text.clone()));
                         }
                         let words = text.split_whitespace().count();
-                        let s = if words == 1 { "" } else { "s" };
+                        let selected = t!(
+                            "assistant-selected",
+                            words = crate::i18n::group(words),
+                            count = words
+                        );
                         ui.label(
-                            RichText::new(format!("{words} word{s} selected · {place}"))
+                            RichText::new(format!("{selected} · {place}"))
                                 .size(12.0)
                                 .color(p.muted),
                         );
@@ -335,7 +345,7 @@ impl MarkdownApp {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(RichText::new("Loading…").color(p.muted));
+                ui.label(RichText::new(t!("reference-loading")).color(p.muted));
             });
             return;
         };
@@ -407,9 +417,9 @@ impl MarkdownApp {
                         ))
                         .sense(egui::Sense::click());
                         let hint = if fit {
-                            "Click for actual size"
+                            t!("reference-click-actual")
                         } else {
-                            "Click to fit the panel"
+                            t!("reference-click-fit")
                         };
                         let response = ui
                             .add(image)
@@ -453,9 +463,9 @@ fn text_selection(text: &str, start: usize, end: usize) -> Option<(String, Strin
     let line_of = |index: usize| 1 + chars[..index].iter().filter(|&&c| c == '\n').count();
     let (first, last) = (line_of(from), line_of(to - 1));
     let place = if first == last {
-        format!("line {first}")
+        t!("reference-line", line = first)
     } else {
-        format!("lines {first}–{last}")
+        t!("reference-lines", first = first, last = last)
     };
     Some((chars[from..to].iter().collect(), place))
 }

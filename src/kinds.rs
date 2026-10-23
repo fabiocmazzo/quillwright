@@ -2,9 +2,12 @@
 //! Each kind is a folder in `assets/kinds/<id>/`: a `kind.toml` with what all its
 //! languages share (labels, the assistant's context files, actions, and prompts), and one
 //! subfolder per language (`en/`, `pt-BR/`) with a `kind.toml` merged over it (folder and
-//! file names, detection) and the `template/` copied by New Project. The kind is never
-//! stored in the writing project; it is inferred from the files there.
+//! file names, detection) and the `template/` copied by New Project. What the interface
+//! shows (the kind's name, section labels, action labels) is in `locales/<lang>.ftl`,
+//! one file per interface language, as messages starting with the kind's id. The kind is
+//! never stored in the writing project; it is inferred from the files there.
 //! See docs/project-kinds.md.
+use crate::i18n;
 use serde::Deserialize;
 use std::{path::Path, sync::OnceLock};
 
@@ -26,12 +29,9 @@ pub struct Kind {
     pub language: String,
     /// The language as shown in New Project ("Português (Brasil)").
     pub language_name: String,
-    pub name: String,
-    pub description: String,
     /// Relative paths whose presence marks a project of this kind ("dir/" for a folder).
     pub detect: Vec<String>,
     pub first_file: String,
-    pub new_project_note: String,
     pub research: Research,
     pub documents: Section,
     pub sheets: Section,
@@ -46,17 +46,16 @@ pub struct Kind {
 #[serde(default)]
 pub struct Research {
     pub folder: String,
-    pub label: String,
-    /// Shown while the folder is empty.
-    pub hint: String,
+    /// The message prefix, such as `novel-research`.
+    #[serde(skip)]
+    key: String,
 }
 
 impl Default for Research {
     fn default() -> Self {
         Research {
             folder: "research".into(),
-            label: "Research".into(),
-            hint: "PDFs, images, and notes — press + to add.".into(),
+            key: String::new(),
         }
     }
 }
@@ -66,22 +65,21 @@ impl Default for Research {
 #[serde(default)]
 pub struct Section {
     pub folder: String,
-    /// Sidebar heading, such as "Chapters".
-    pub label: String,
+    /// How the assistant's prompt, which is in English, names these files ("chapter").
     pub singular: String,
     pub plural: String,
     /// File name for new files, without extension; `{n}` is the number.
     pub new_name: String,
     /// Title (level-1 heading) of new files; `{n}` is the number.
     pub new_title: String,
-    pub empty_hint: String,
-    /// Home screen button when the section is empty.
-    pub first_action: String,
     /// Template file whose body starts new files.
     pub template: Option<String>,
-    /// How the assistant panel and prompt name these files ("character sheet").
+    /// How the prompt names sheets ("character sheet").
     pub prompt_singular: String,
     pub prompt_plural: String,
+    /// The message prefix, such as `novel-documents`.
+    #[serde(skip)]
+    key: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -96,8 +94,6 @@ pub struct Assistant {
     pub reference_note: String,
     pub context: Vec<ContextFile>,
     pub actions: Vec<Action>,
-    /// Placeholder of the instruction box.
-    pub ask_hint: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -105,21 +101,25 @@ pub struct Assistant {
 pub struct ContextFile {
     pub file: String,
     pub heading: String,
-    /// Named in the panel's list of what was sent ("world rules").
-    pub summary: String,
     /// Longest text sent, in characters.
     pub limit: usize,
+    /// The message that names it in the panel ("world rules"):
+    /// `<kind>-context-<heading in kebab case>`.
+    #[serde(skip)]
+    key: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct Action {
-    pub label: String,
-    pub hint: String,
+    /// Names its label, the message `<kind>-action-<id>`.
+    pub id: String,
     pub needs_selection: bool,
     pub result: ResultKind,
     pub task: String,
     pub output: String,
+    #[serde(skip)]
+    key: String,
 }
 
 /// How an answer is meant to be used.
@@ -136,23 +136,97 @@ pub enum ResultKind {
     Notes,
 }
 
+/// The kind's message `key` (a section's, an action's) in the interface language.
+fn message(key: &str, part: &str) -> String {
+    i18n::text(&format!("{key}{part}"), None)
+}
+
+fn counted(key: &str, part: &str, n: usize) -> String {
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("count", n);
+    i18n::text(&format!("{key}{part}"), Some(&args))
+}
+
 impl Section {
-    /// "New chapter".
+    /// The sidebar heading: "Chapters".
+    pub fn label(&self) -> String {
+        message(&self.key, "")
+    }
+
+    /// One file, as a noun inside a sentence ("chapter"), and its grammatical gender
+    /// for the messages that need it ("masculine", "feminine", or "other").
+    pub fn noun(&self) -> (String, String) {
+        let key = format!("{}-one", self.key);
+        let gender = i18n::lookup(&key, Some("gender"), None).unwrap_or_else(|| "other".into());
+        (i18n::text(&key, None), gender)
+    }
+
+    /// "New chapter", the "+" tooltip.
     pub fn new_label(&self) -> String {
-        format!("New {}", self.singular)
+        message(&self.key, "-new")
     }
 
     /// "New Chapter", for menus.
     pub fn new_menu_label(&self) -> String {
-        let title: Vec<String> = self.singular.split(' ').map(capitalize).collect();
-        format!("New {}", title.join(" "))
+        message(&self.key, "-new-menu")
     }
 
     /// "1 chapter", "3 chapters".
     pub fn count(&self, n: usize) -> String {
-        let word = if n == 1 { &self.singular } else { &self.plural };
-        format!("{n} {word}")
+        counted(&self.key, "-count", n)
     }
+
+    /// Shown while the section is empty.
+    pub fn empty_hint(&self) -> String {
+        message(&self.key, "-empty")
+    }
+
+    /// Home screen button when the section is empty.
+    pub fn first_action(&self) -> String {
+        message(&self.key, "-first")
+    }
+
+    /// How the assistant panel lists sheets it sends: "2 character sheets".
+    pub fn sent(&self, n: usize) -> String {
+        counted(&self.key, "-sent", n)
+    }
+}
+
+impl Research {
+    pub fn label(&self) -> String {
+        message(&self.key, "")
+    }
+
+    /// Shown while the folder is empty.
+    pub fn hint(&self) -> String {
+        message(&self.key, "-hint")
+    }
+}
+
+impl Action {
+    pub fn label(&self) -> String {
+        message(&self.key, "")
+    }
+
+    pub fn hint(&self) -> String {
+        i18n::lookup(&self.key, Some("hint"), None).unwrap_or_default()
+    }
+}
+
+impl ContextFile {
+    /// How the panel names it in what was sent: "world rules".
+    pub fn summary(&self) -> String {
+        message(&self.key, "")
+    }
+}
+
+/// "World rules" → "world-rules".
+fn kebab(text: &str) -> String {
+    text.split(|c: char| !c.is_alphanumeric())
+        .filter(|part| !part.is_empty())
+        .map(str::to_lowercase)
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 pub fn capitalize(word: &str) -> String {
@@ -210,6 +284,15 @@ fn load(files: &[(&str, &str)]) -> Result<Vec<Kind>, String> {
                 .map_err(|e| format!("kind {id} ({language}): {e}"))?;
             kind.id = id.to_string();
             kind.language = language.to_string();
+            kind.research.key = format!("{id}-research");
+            kind.documents.key = format!("{id}-documents");
+            kind.sheets.key = format!("{id}-sheets");
+            for action in &mut kind.assistant.actions {
+                action.key = format!("{id}-action-{}", action.id);
+            }
+            for file in &mut kind.assistant.context {
+                file.key = format!("{id}-context-{}", kebab(&file.heading));
+            }
             let template = format!("{id}/{language}/template/");
             kind.files = files
                 .iter()
@@ -274,6 +357,42 @@ pub fn detect(root: &Path) -> &'static Kind {
 }
 
 impl Kind {
+    /// The kind's name in the interface language: "Novel".
+    pub fn name(&self) -> String {
+        message(&self.id, "")
+    }
+
+    pub fn description(&self) -> String {
+        message(&self.id, "-description")
+    }
+
+    /// Placeholder of the assistant's instruction box.
+    pub fn ask_hint(&self) -> String {
+        message(&self.id, "-ask-hint")
+    }
+
+    /// What New Project creates: the template's top-level folders, then its files
+    /// ("chapters/, characters/, AGENT.md, world-rules.md").
+    pub fn template_entries(&self) -> String {
+        let mut folders = Vec::new();
+        let mut files = Vec::new();
+        for (path, _) in &self.files {
+            match path.split_once('/') {
+                Some((folder, _)) => {
+                    let folder = format!("{folder}/");
+                    if !folders.contains(&folder) {
+                        folders.push(folder);
+                    }
+                }
+                None => files.push(path.clone()),
+            }
+        }
+        folders.sort();
+        files.sort();
+        folders.extend(files);
+        folders.join(", ")
+    }
+
     fn matches(&self, root: &Path) -> bool {
         self.detect
             .iter()
@@ -302,7 +421,35 @@ mod tests {
         assert_eq!(all()[0].language, FIRST_LANGUAGE);
         for kind in all() {
             let id = format!("{} ({})", kind.id, kind.language);
-            assert!(!kind.name.is_empty(), "{id}: name");
+            // Every interface text exists, in every interface language (the i18n tests
+            // check that each language has every English message).
+            let text = |key: &str| {
+                assert!(
+                    i18n::lookup(key, None, None).is_some(),
+                    "{id}: no message {key}"
+                );
+            };
+            text(&kind.id);
+            text(&format!("{}-description", kind.id));
+            text(&format!("{}-ask-hint", kind.id));
+            text(&kind.research.key);
+            for section in [&kind.documents, &kind.sheets] {
+                for part in [
+                    "",
+                    "-one",
+                    "-count",
+                    "-new",
+                    "-new-menu",
+                    "-empty",
+                    "-first",
+                ] {
+                    text(&format!("{}{part}", section.key));
+                }
+            }
+            text(&format!("{}-sent", kind.sheets.key));
+            for file in &kind.assistant.context {
+                text(&file.key);
+            }
             assert!(!kind.language_name.is_empty(), "{id}: language_name");
             assert!(!kind.detect.is_empty(), "{id}: detect");
             assert!(kind.file(&kind.first_file).is_some(), "{id}: first_file");
@@ -323,12 +470,12 @@ mod tests {
                 assert!(file.limit > 0, "{id}: {} limit", file.file);
             }
             assert!(!kind.assistant.preamble.is_empty(), "{id}: preamble");
-            assert!(!kind.assistant.ask_hint.is_empty(), "{id}: ask_hint");
             for action in &kind.assistant.actions {
-                assert!(!action.label.is_empty() && !action.task.is_empty());
-                assert!(!action.output.is_empty(), "{id}: {}", action.label);
+                text(&action.key);
+                assert!(!action.hint().is_empty(), "{id}: {} hint", action.id);
+                assert!(!action.task.is_empty() && !action.output.is_empty());
                 if action.result == ResultKind::Replacement {
-                    assert!(action.needs_selection, "{id}: {}", action.label);
+                    assert!(action.needs_selection, "{id}: {}", action.id);
                 }
             }
             // A new project of this kind is recognized as this kind.
@@ -348,7 +495,7 @@ mod tests {
         let files = [
             (
                 "k/kind.toml",
-                "name = \"K\"\ndetect = [\"a/\"]\n[documents]\nfolder = \"a\"\nlabel = \"Docs\"\n",
+                "detect = [\"a/\"]\n[documents]\nfolder = \"a\"\nsingular = \"doc\"\n",
             ),
             ("k/en/kind.toml", "language_name = \"English\""),
             (
@@ -365,11 +512,11 @@ mod tests {
             ("en", "pt-BR")
         );
         assert_eq!(pt.documents.folder, "b");
-        assert_eq!(pt.documents.label, "Docs"); // Kept from the shared file.
+        assert_eq!(pt.documents.singular, "doc"); // Kept from the shared file.
         assert_eq!(pt.detect, ["b/"]); // Lists are replaced, not appended.
         assert_eq!(pt.file("b/1.md"), Some("# Um"));
         assert!(en.files.is_empty());
-        assert!(load(&[("k/kind.toml", "name = \"K\"")]).is_err());
+        assert!(load(&[("k/kind.toml", "detect = []")]).is_err());
     }
 
     #[test]
@@ -393,5 +540,12 @@ mod tests {
         assert_eq!(chapters.new_menu_label(), "New Chapter");
         assert_eq!(chapters.count(1), "1 chapter");
         assert_eq!(chapters.count(3), "3 chapters");
+        assert_eq!(chapters.label(), "Chapters");
+        assert_eq!(default_kind().name(), "Novel");
+        assert_eq!(
+            default_kind().template_entries(),
+            "chapters/, characters/, AGENT.md, world-rules.md"
+        );
+        assert_eq!(kebab("Client questions"), "client-questions");
     }
 }

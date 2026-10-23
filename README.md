@@ -43,6 +43,7 @@ Your work is never locked into a proprietary format. Everything is plain UTF-8 M
 - **Safe saving.** Files are saved atomically (written to a temporary file, then renamed), so agents never read a half-written chapter. Saving, including autosave, refuses to overwrite a file that changed on disk since you opened it, and asks you instead.
 - **Spell checking** in the language of your book, with Hunspell dictionaries. Misspelled words are underlined; right-click one for suggestions. Character names are known automatically, and words you add go to a plain `dictionary.txt` in the project.
 - **Typography for long reading.** Literata and [Atkinson Hyperlegible](https://github.com/googlefonts/atkinson-hyperlegible) are bundled, or use any installed font. Text size changes live (Ctrl+] / Ctrl+[).
+- **In your language.** The interface is in English, Portuguese (Brazil), Spanish, and Simplified Chinese, following the system's language or chosen in **View → Interface Language**. Your manuscript can be in any language.
 - **Optional line numbers**, find & replace, lint & format with configurable external tools (defaults to [`rumdl`](https://github.com/fibnas/rumdl)), and unsaved-changes protection everywhere.
 
 ![The Night theme](screenshots/night.png)
@@ -374,9 +375,12 @@ autosave_delay = 2.0       # seconds without typing before saving
 
 ```toml
 [view]
+language = ""              # "en", "pt-BR", "es", "zh-CN"; empty follows the system
 sidebar = true             # manuscript sidebar (Ctrl+B)
 session_goal = 0           # words per session; 0 hides the progress bar
 ```
+
+The interface language only changes the app's own text. The language of a book (for spelling and export) is the `lang` in its `metadata.yaml`, set from **View → Spelling Language**.
 
 Session words count only what you type in Quillwright (net of deletions); text written by an agent and reloaded from disk is not counted. The counter starts at zero each time the app starts.
 

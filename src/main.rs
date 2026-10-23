@@ -12,6 +12,7 @@ mod export_ui;
 mod file_sync;
 mod fonts;
 mod history;
+mod i18n;
 mod kinds;
 mod live_preview;
 mod manuscript;
@@ -28,6 +29,7 @@ mod spelling_ui;
 mod system_theme;
 mod theme;
 mod workspace;
+use i18n::t;
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -183,19 +185,21 @@ enum DiscardAction {
 }
 
 impl DiscardAction {
-    fn description(&self) -> String {
+    /// "You have unsaved changes. Save before …?"
+    fn question(&self) -> String {
+        let path = |path: &Path| path.display().to_string();
         match self {
-            DiscardAction::NewDocument => "starting a new document".to_string(),
-            DiscardAction::Home => "going to the project home".to_string(),
-            DiscardAction::OpenDialog => "opening another file".to_string(),
-            DiscardAction::CreateProject(path) => format!("creating project {}", path.display()),
-            DiscardAction::OpenProject(path) => format!("opening project {}", path.display()),
-            DiscardAction::OpenPath(path) => {
-                let name = path
+            DiscardAction::NewDocument => t!("discard-new-document"),
+            DiscardAction::Home => t!("discard-home"),
+            DiscardAction::OpenDialog => t!("discard-open-file"),
+            DiscardAction::CreateProject(p) => t!("discard-create-project", path = path(p)),
+            DiscardAction::OpenProject(p) => t!("discard-open-project", path = path(p)),
+            DiscardAction::OpenPath(p) => {
+                let name = p
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| path.display().to_string());
-                format!("opening {name}")
+                    .unwrap_or_else(|| path(p));
+                t!("discard-open", name = name)
             }
         }
     }
@@ -220,6 +224,8 @@ struct AppConfig {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 struct ViewConfig {
+    /// The interface language (`en`, `pt-BR`, `es`, `zh-CN`); empty follows the system.
+    language: String,
     sidebar: bool,
     /// Words to write per session; 0 hides the goal.
     session_goal: usize,
@@ -228,6 +234,7 @@ struct ViewConfig {
 impl Default for ViewConfig {
     fn default() -> Self {
         Self {
+            language: String::new(),
             sidebar: true,
             session_goal: 0,
         }
@@ -307,6 +314,9 @@ fn parse_color(value: &str) -> Option<Color32> {
 impl Default for MarkdownApp {
     fn default() -> Self {
         let (mut config, config_path) = MarkdownApp::load_config();
+        // Tests keep English, whatever the system's language.
+        #[cfg(not(test))]
+        i18n::set_language(&config.view.language);
         let working_dir = MarkdownApp::initial_working_directory(&mut config);
         let app = Self {
             content: String::new(),
@@ -571,7 +581,7 @@ impl eframe::App for MarkdownApp {
 
         if self.show_tool_output {
             let mut open = true;
-            egui::Window::new("Tool Output")
+            egui::Window::new(t!("tool-output"))
                 .open(&mut open)
                 .resizable(true)
                 .vscroll(true)
@@ -579,7 +589,7 @@ impl eframe::App for MarkdownApp {
                     if let Some(output) = &self.tool_output {
                         ui.monospace(output);
                     } else {
-                        ui.label("No output available.");
+                        ui.label(t!("tool-output-none"));
                     }
                 });
             if !open {
@@ -588,7 +598,7 @@ impl eframe::App for MarkdownApp {
         }
 
         if self.show_help_overlay {
-            egui::Window::new("Key Bindings")
+            egui::Window::new(t!("shortcuts-title"))
                 .anchor(Align2::RIGHT_TOP, egui::vec2(-12.0, 12.0))
                 .resizable(false)
                 .collapsible(false)
@@ -600,7 +610,7 @@ impl eframe::App for MarkdownApp {
                         .show(ui, |ui| {
                             for (keys, action) in workspace::SHORTCUTS {
                                 ui.label(egui::RichText::new(*keys).monospace());
-                                ui.label(*action);
+                                ui.label(t!(action));
                                 ui.end_row();
                             }
                         });
@@ -609,7 +619,7 @@ impl eframe::App for MarkdownApp {
 
         if self.show_find_replace {
             let mut open = true;
-            egui::Window::new("Find / Replace")
+            egui::Window::new(t!("find-title"))
                 .anchor(Align2::LEFT_BOTTOM, egui::vec2(12.0, -12.0))
                 .resizable(false)
                 .collapsible(false)
@@ -637,19 +647,19 @@ impl eframe::App for MarkdownApp {
                         }
 
                         ui.horizontal(|ui| {
-                            if ui.button("Find Next").clicked() {
+                            if ui.button(t!("find-next")).clicked() {
                                 self.pending_find_next = true;
                             }
-                            if ui.button("Find Prev").clicked() {
+                            if ui.button(t!("find-previous")).clicked() {
                                 self.pending_find_previous = true;
                             }
-                            if ui.button("Replace").clicked() {
+                            if ui.button(t!("find-replace")).clicked() {
                                 self.pending_replace = true;
                             }
-                            if ui.button("Replace All").clicked() {
+                            if ui.button(t!("find-replace-all")).clicked() {
                                 self.pending_replace_all = true;
                             }
-                            if ui.button("Close").clicked() {
+                            if ui.button(t!("button-close")).clicked() {
                                 self.show_find_replace = false;
                             }
                         });
@@ -669,14 +679,14 @@ impl eframe::App for MarkdownApp {
 
         // ==== EXIT CONFIRMATION ====
         if self.show_exit_confirm {
-            egui::Window::new("Unsaved Changes")
+            egui::Window::new(t!("discard-title"))
                 .anchor(Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
                 .collapsible(false)
                 .resizable(false)
                 .show(ctx, |ui| {
-                    ui.label("You have unsaved changes. Save before exiting?");
+                    ui.label(t!("discard-exit"));
                     ui.horizontal(|ui| {
-                        if ui.button("Save and Exit").clicked() {
+                        if ui.button(t!("button-save-and-exit")).clicked() {
                             self.save_file(false);
                             // Stay open if the save was cancelled or hit a conflict.
                             if !self.modified {
@@ -684,10 +694,10 @@ impl eframe::App for MarkdownApp {
                             }
                             self.show_exit_confirm = false;
                         }
-                        if ui.button("Discard and Exit").clicked() {
+                        if ui.button(t!("button-discard-and-exit")).clicked() {
                             std::process::exit(0);
                         }
-                        if ui.button("Cancel").clicked() {
+                        if ui.button(t!("button-cancel")).clicked() {
                             self.show_exit_confirm = false;
                         }
                     });
@@ -695,22 +705,19 @@ impl eframe::App for MarkdownApp {
         }
 
         if self.pending_discard_action.is_some() {
-            let description = self
+            let question = self
                 .pending_discard_action
                 .as_ref()
-                .map(|action| action.description())
+                .map(|action| action.question())
                 .unwrap_or_default();
-            egui::Window::new("Unsaved Changes")
+            egui::Window::new(t!("discard-title"))
                 .anchor(Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
                 .collapsible(false)
                 .resizable(false)
                 .show(ctx, |ui| {
-                    ui.label(format!(
-                        "You have unsaved changes. Save before {}?",
-                        description
-                    ));
+                    ui.label(question);
                     ui.horizontal(|ui| {
-                        if ui.button("Save").clicked() {
+                        if ui.button(t!("button-save")).clicked() {
                             self.save_file(false);
                             if !self.modified {
                                 if let Some(action) = self.pending_discard_action.take() {
@@ -718,12 +725,12 @@ impl eframe::App for MarkdownApp {
                                 }
                             }
                         }
-                        if ui.button("Discard").clicked() {
+                        if ui.button(t!("button-discard")).clicked() {
                             if let Some(action) = self.pending_discard_action.take() {
                                 self.perform_discard_action(action);
                             }
                         }
-                        if ui.button("Cancel").clicked() {
+                        if ui.button(t!("button-cancel")).clicked() {
                             self.pending_discard_action = None;
                         }
                     });
@@ -934,7 +941,7 @@ impl MarkdownApp {
 
     fn pick_project(&mut self) {
         if let Some(path) = FileDialog::new()
-            .set_title("Open Project")
+            .set_title(&t!("dialog-open-project"))
             .set_directory(&self.working_dir)
             .pick_folder()
         {
@@ -962,18 +969,18 @@ impl MarkdownApp {
         let mut open = true;
         let mut destination = None;
         let mut cancelled = false;
-        egui::Window::new("New Project")
+        egui::Window::new(t!("new-project-title"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
-                ui.label("Project folder name");
+                ui.label(t!("new-project-name"));
                 ui.text_edit_singleline(&mut dialog.name);
-                ui.label("Create inside");
+                ui.label(t!("new-project-parent"));
                 ui.monospace(dialog.parent.display().to_string());
-                if ui.button("Choose Folder...").clicked() {
+                if ui.button(t!("new-project-choose")).clicked() {
                     if let Some(parent) = FileDialog::new()
-                        .set_title("Choose Parent Folder")
+                        .set_title(&t!("dialog-choose-parent"))
                         .set_directory(&dialog.parent)
                         .pick_folder()
                     {
@@ -982,12 +989,12 @@ impl MarkdownApp {
                     }
                 }
                 ui.add_space(6.0);
-                ui.label("Kind of project");
+                ui.label(t!("new-project-kind"));
                 for choice in kinds::choices() {
                     let selected = dialog.kind.id == choice.id;
                     if ui
-                        .radio(selected, choice.name.as_str())
-                        .on_hover_text(choice.description.as_str())
+                        .radio(selected, choice.name())
+                        .on_hover_text(choice.description())
                         .clicked()
                         && !selected
                     {
@@ -998,7 +1005,7 @@ impl MarkdownApp {
                 let languages = kinds::languages(&dialog.kind.id);
                 if languages.len() > 1 {
                     ui.add_space(4.0);
-                    ui.label("Language of the template");
+                    ui.label(t!("new-project-language"));
                     ui.horizontal_wrapped(|ui| {
                         for variant in languages {
                             let selected = dialog.kind.language == variant.language;
@@ -1010,12 +1017,15 @@ impl MarkdownApp {
                 }
                 ui.add_space(4.0);
                 ui.label(
-                    egui::RichText::new(dialog.kind.description.as_str())
+                    egui::RichText::new(dialog.kind.description())
                         .italics()
                         .weak(),
                 );
-                ui.label(dialog.kind.new_project_note.as_str());
-                ui.label("Templates are optional. Existing folders will not be overwritten.");
+                ui.label(t!(
+                    "new-project-creates",
+                    files = dialog.kind.template_entries()
+                ));
+                ui.label(t!("new-project-note"));
                 if let Some(error) = &dialog.error {
                     ui.colored_label(ui.visuals().error_fg_color, error);
                 }
@@ -1023,7 +1033,7 @@ impl MarkdownApp {
                     if ui
                         .add_enabled(
                             self.pending_discard_action.is_none(),
-                            egui::Button::new("Create"),
+                            egui::Button::new(t!("button-create")),
                         )
                         .clicked()
                     {
@@ -1035,7 +1045,7 @@ impl MarkdownApp {
                             Err(err) => dialog.error = Some(err.to_string()),
                         }
                     }
-                    cancelled = ui.button("Cancel").clicked();
+                    cancelled = ui.button(t!("button-cancel")).clicked();
                 });
             });
         if !open || cancelled {
@@ -1126,7 +1136,11 @@ impl MarkdownApp {
                 }
             }
             Err(err) => {
-                ui.label(format!("Cannot read {}: {}", path.display(), err));
+                ui.label(t!(
+                    "cannot-read",
+                    path = path.display().to_string(),
+                    error = err.to_string()
+                ));
             }
         }
     }
@@ -1136,9 +1150,7 @@ impl MarkdownApp {
             Some(command) => {
                 self.run_external_tool(&command, false, self.config.tools.lint_use_open_file)
             }
-            None => self.show_tool_message(
-                "No lint command configured. Add a [tools] lint entry to config.toml.",
-            ),
+            None => self.show_tool_message(t!("tool-no-lint")),
         }
     }
 
@@ -1147,9 +1159,7 @@ impl MarkdownApp {
             Some(command) => {
                 self.run_external_tool(&command, true, self.config.tools.format_use_open_file)
             }
-            None => self.show_tool_message(
-                "No format command configured. Add a [tools] format entry to config.toml.",
-            ),
+            None => self.show_tool_message(t!("tool-no-format")),
         }
     }
 
@@ -1160,16 +1170,14 @@ impl MarkdownApp {
         use_current_file: bool,
     ) {
         if command.is_empty() {
-            self.show_tool_message("Configured tool command is empty.");
+            self.show_tool_message(t!("tool-empty"));
             return;
         }
 
         let mut temp_file: Option<NamedTempFile> = None;
         let target_path = if use_current_file {
             if self.modified {
-                self.show_tool_message(
-                    "Save before running this tool on the current file, or disable *_use_open_file.",
-                );
+                self.show_tool_message(t!("tool-save-first"));
                 return;
             }
             match self.file_path.as_ref() {
@@ -1177,17 +1185,15 @@ impl MarkdownApp {
                     if path.is_file() {
                         path.clone()
                     } else {
-                        self.show_tool_message(format!(
-                            "Current file path '{}' is not a file.",
-                            path.display()
+                        self.show_tool_message(t!(
+                            "tool-not-a-file",
+                            path = path.display().to_string()
                         ));
                         return;
                     }
                 }
                 None => {
-                    self.show_tool_message(
-                        "No file is currently open. Save the document first or disable *_use_open_file.",
-                    );
+                    self.show_tool_message(t!("tool-no-file"));
                     return;
                 }
             }
@@ -1195,7 +1201,7 @@ impl MarkdownApp {
             let file = match self.create_temp_markdown() {
                 Ok(file) => file,
                 Err(err) => {
-                    self.show_tool_message(format!("Failed to prepare temp file: {}", err));
+                    self.show_tool_message(t!("tool-temp-failed", error = err.to_string()));
                     return;
                 }
             };
@@ -1213,7 +1219,11 @@ impl MarkdownApp {
         let output = match cmd.output() {
             Ok(output) => output,
             Err(err) => {
-                self.show_tool_message(format!("Failed to run '{}': {}", command[0], err));
+                self.show_tool_message(t!(
+                    "tool-run-failed",
+                    tool = command[0].as_str(),
+                    error = err.to_string()
+                ));
                 return;
             }
         };
@@ -1405,11 +1415,11 @@ impl MarkdownApp {
         if let Some((start, end)) = self.find_next_match(start_from, wrap) {
             self.pending_selection = Some((start, end));
             self.current_char_index = end;
-            self.find_status = Some("Match found".to_string());
+            self.find_status = Some(t!("find-found"));
             self.selection_start = start;
             self.selection_end = end;
         } else {
-            self.find_status = Some("No match found".to_string());
+            self.find_status = Some(t!("find-none"));
         }
     }
 
@@ -1422,27 +1432,27 @@ impl MarkdownApp {
         if let Some((start, end)) = self.find_previous_match(start_from, wrap) {
             self.pending_selection = Some((start, end));
             self.current_char_index = start;
-            self.find_status = Some("Match found".to_string());
+            self.find_status = Some(t!("find-found"));
             self.selection_start = start;
             self.selection_end = end;
         } else {
-            self.find_status = Some("No previous match".to_string());
+            self.find_status = Some(t!("find-no-previous"));
         }
     }
 
     fn replace_current_selection(&mut self) -> bool {
         if self.find_query.is_empty() {
-            self.find_status = Some("Enter text to find".to_string());
+            self.find_status = Some(t!("find-empty"));
             return false;
         }
         if self.selection_end <= self.selection_start {
-            self.find_status = Some("Select a match or use Find".to_string());
+            self.find_status = Some(t!("find-select"));
             return false;
         }
         let (start_byte, end_byte) =
             Self::char_range_to_byte_range(&self.content, self.selection_start, self.selection_end);
         if self.content[start_byte..end_byte] != self.find_query {
-            self.find_status = Some("Selection does not match search text".to_string());
+            self.find_status = Some(t!("find-mismatch"));
             return false;
         }
         let replacement = self.replace_query.clone();
@@ -1454,18 +1464,18 @@ impl MarkdownApp {
         self.current_char_index = new_selection_end;
         self.selection_end = new_selection_end;
         self.update_modified_state();
-        self.find_status = Some("Replaced selection".to_string());
+        self.find_status = Some(t!("find-replaced"));
         true
     }
 
     fn replace_all_matches(&mut self) {
         if self.find_query.is_empty() {
-            self.find_status = Some("Enter text to find".to_string());
+            self.find_status = Some(t!("find-empty"));
             return;
         }
         let count = self.content.matches(&self.find_query).count();
         if count == 0 {
-            self.find_status = Some("No matches to replace".to_string());
+            self.find_status = Some(t!("find-nothing-to-replace"));
             return;
         }
         let replacement = self.replace_query.clone();
@@ -1475,7 +1485,7 @@ impl MarkdownApp {
         self.selection_start = 0;
         self.selection_end = 0;
         self.current_char_index = 0;
-        self.find_status = Some(format!("Replaced {} occurrence(s)", count));
+        self.find_status = Some(t!("find-replaced-all", count = count));
     }
 
     fn delete_current_line(&mut self) {
@@ -1530,7 +1540,7 @@ impl MarkdownApp {
         self.current_char_index = new_char_index;
         self.selection_start = new_char_index;
         self.selection_end = new_char_index;
-        self.find_status = Some("Line deleted".to_string());
+        self.find_status = Some(t!("line-deleted"));
     }
 
     fn total_line_count(&self) -> usize {
@@ -1615,7 +1625,11 @@ impl MarkdownApp {
                 self.external_load = true;
             }
             Err(err) => {
-                self.show_tool_message(format!("Could not open {}: {err}", path.display()));
+                self.show_tool_message(t!(
+                    "open-failed",
+                    path = path.display().to_string(),
+                    error = err.to_string()
+                ));
             }
         }
     }
@@ -1637,11 +1651,13 @@ impl MarkdownApp {
                         self.file_path = Some(Self::canonicalize_path(&path));
                         self.mark_saved();
                     }
-                    Err(disk) => self.show_tool_message(format!("Save error: {disk:?}")),
+                    Err(disk) => {
+                        self.show_tool_message(t!("save-failed", error = format!("{disk:?}")))
+                    }
                 }
             }
         } else if let Err(err) = self.save_in_place() {
-            self.show_tool_message(format!("Save error: {err}"));
+            self.show_tool_message(t!("save-failed", error = err.to_string()));
         }
     }
 
@@ -1696,7 +1712,7 @@ impl MarkdownApp {
             // Something in the project changed: refresh chapter titles and counts.
             self.index_dirty = true;
             if let Some(warning) = &update.warning {
-                self.sync_notice = Some(format!("⚠ File watching degraded: {warning}"));
+                self.sync_notice = Some(format!("⚠ {}", t!("watch-degraded", warning = warning)));
             }
             // Follow renames of the project folder or the open file.
             if update.root != self.working_dir && update.root.is_dir() {
@@ -1774,37 +1790,38 @@ impl MarkdownApp {
             .as_deref()
             .and_then(Path::file_name)
             .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "This file".to_string());
-        egui::Window::new("File Changed on Disk")
+            .unwrap_or_else(|| t!("conflict-this-file"));
+        egui::Window::new(t!("conflict-title"))
             .anchor(Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
                 match &disk {
-                    file_sync::Disk::Text(_) => ui.label(format!(
-                        "{name} was changed outside Quillwright (for example, by an agent) \
-                         while you had unsaved edits."
-                    )),
+                    file_sync::Disk::Text(_) => {
+                        ui.label(t!("conflict-changed", name = name.as_str()))
+                    }
                     file_sync::Disk::Missing => {
-                        ui.label(format!("{name} was deleted or moved outside Quillwright."))
+                        ui.label(t!("conflict-deleted", name = name.as_str()))
                     }
-                    file_sync::Disk::Unreadable(err) => {
-                        ui.label(format!("{name} can no longer be read: {err}"))
-                    }
+                    file_sync::Disk::Unreadable(err) => ui.label(t!(
+                        "conflict-unreadable",
+                        name = name.as_str(),
+                        error = err.to_string()
+                    )),
                 };
                 ui.horizontal(|ui| {
                     if let file_sync::Disk::Text(text) = &disk {
                         if ui
-                            .button("Reload from Disk")
-                            .on_hover_text("Discard your unsaved edits")
+                            .button(t!("conflict-reload"))
+                            .on_hover_text(t!("conflict-reload.hint"))
                             .clicked()
                         {
                             self.reload_from_disk(text.clone());
                         }
                     }
                     if ui
-                        .button("Keep My Version")
-                        .on_hover_text("Keep editing; saving will overwrite the disk version")
+                        .button(t!("conflict-keep"))
+                        .on_hover_text(t!("conflict-keep.hint"))
                         .clicked()
                     {
                         match &disk {
@@ -1874,7 +1891,11 @@ impl MarkdownApp {
                         self.new_project = None;
                     }
                     Err(err) => {
-                        let message = format!("Could not create project {}: {err}", path.display());
+                        let message = t!(
+                            "project-create-failed",
+                            path = path.display().to_string(),
+                            error = err.to_string()
+                        );
                         if let Some(dialog) = &mut self.new_project {
                             dialog.error = Some(message);
                         } else {
@@ -1885,8 +1906,11 @@ impl MarkdownApp {
             }
             DiscardAction::OpenProject(path) => match project::open(&path) {
                 Ok(root) => self.activate_project(root),
-                Err(err) => self
-                    .show_tool_message(format!("Could not open project {}: {err}", path.display())),
+                Err(err) => self.show_tool_message(t!(
+                    "project-open-failed",
+                    path = path.display().to_string(),
+                    error = err.to_string()
+                )),
             },
         }
     }

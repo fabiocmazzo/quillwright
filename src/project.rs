@@ -6,6 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::i18n::t;
 use crate::kinds::Kind;
 
 pub struct NewProject {
@@ -21,7 +22,7 @@ pub fn destination(parent: &Path, name: &str) -> io::Result<PathBuf> {
     if name.is_empty() || matches!(name, "." | "..") || name.contains(['/', '\\', '\0']) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "Enter a folder name, without path separators.",
+            t!("project-name-invalid"),
         ));
     }
     let mut components = Path::new(name).components();
@@ -30,13 +31,13 @@ pub fn destination(parent: &Path, name: &str) -> io::Result<PathBuf> {
     {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "Use a single folder name.",
+            t!("project-name-single"),
         ));
     }
     if !parent.is_dir() {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
-            "Choose an existing parent folder.",
+            t!("project-parent-missing"),
         ));
     }
     Ok(parent.join(name))

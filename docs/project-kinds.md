@@ -137,7 +137,8 @@ code: `build.rs` lists every file under `assets/kinds/` and the app embeds them.
 ```text
 assets/kinds/                    # built-in kinds, embedded in the executable
 ├── novel/
-│   ├── kind.toml                # shared: labels, assistant prompts and actions
+│   ├── kind.toml                # shared: assistant prompts and actions
+│   ├── locales/                 # interface texts: en.ftl, pt-BR.ftl, es.ftl, zh-CN.ftl
 │   └── en/
 │       ├── kind.toml            # language_name = "English"
 │       └── template/            # copied as-is by New Project
@@ -166,9 +167,11 @@ value, including a list, is replaced as a whole.
 When a kind has more than one language, New Project asks which one; otherwise it does not.
 The `en` variant is listed first and is required for every built-in kind.
 
-What stays in English in every language: the app's own labels ("Filings", "New filing",
-"Check against facts"), as the ground rules require for UI text, and the assistant's
-prompts. The prompts tell the model to write in the language of the documents, which
+The labels the app shows ("Filings", "New filing", "Check against facts") follow the
+*interface* language, not the template's: they are Fluent messages in the kind's
+`locales/<lang>.ftl`, named after the kind's id (`legal-documents`, `legal-action-check`;
+see "Interface language" in `AGENTS.md`). What stays in English in every language is the
+assistant's prompts. The prompts tell the model to write in the language of the documents, which
 works for any language, and keep one set of prompts per kind to maintain. A language may
 still override any value, so translated prompts are possible if they turn out to work
 better.
@@ -183,13 +186,11 @@ folder of Markdown files with no manifest.
 
 ### `kind.toml`
 
-The TOML is not just a name and a description; it replaces what is hard-coded today
-(folder names, sidebar labels, the assistant's context files, actions, and prompts). Every
+The TOML replaces what used to be hard-coded (folder names, the assistant's context files,
+actions, and prompts); the kind's name, description, and labels are in `locales/`. Every
 table uses `#[serde(default)]`, so a kind written for an older version keeps loading.
 
 ```toml
-name = "Novel"
-description = "Chapters, character sheets, and the rules of your world"
 # A project with any of these (relative paths; a trailing / means a folder) is this kind.
 detect = ["chapters/", "characters/", "world-rules.md"]
 # File opened after New Project creates the folder.
@@ -197,14 +198,12 @@ first_file = "chapters/001-opening.md"
 
 [documents]                      # the main documents: counted, searched, exported in order
 folder = "chapters"
-label = "Chapters"
-singular = "chapter"             # "New chapter", "3 chapters"
+singular = "chapter"             # how the (English) prompt names one
 new_name = "chapter-{n}"         # new files are NNN-chapter-N.md, after the highest number
 new_title = "Chapter {n}"
 
 [sheets]                         # entity sheets: characters, parties, ...
 folder = "characters"
-label = "Characters"
 singular = "character"
 new_name = "new-character"       # new-character.md, new-character-2.md, ...
 new_title = "New character"
@@ -220,7 +219,7 @@ heading = "World rules"
 limit = 24000
 
 [[assistant.actions]]
-label = "Continue the scene"
+id = "continue"                  # labeled by the message novel-action-continue
 result = "insert"                # replace (needs a selection) | insert | notes
 task = "Continue the story from the cursor position..."
 output = "Reply with only the new text to insert at the cursor..."
@@ -246,9 +245,10 @@ added later.
   instead of the constants `CHAPTERS_DIR` and `CHARACTERS_DIR`; `new_document` and
   `new_sheet` take their names and titles from the kind.
 - `project::create(path, kind)` copies the kind's template.
-- `workspace.rs`: sidebar sections, the File menu, and counts use the kind's labels.
+- `workspace.rs`: sidebar sections, the File menu, and counts use the kind's labels, read
+  from its `locales/` in the interface language.
 - `assistant.rs`: `Context::gather` reads the kind's guide and context files, and the
-  writing actions (label, task, output format, result kind) come from the kind.
+  writing actions (id, task, output format, result kind) come from the kind.
 - Export defaults (unit of export, page size, typography) stay in code until the Legal kind
   needs them. Also still novel-specific: export looks for images in `chapters/`, the
   keyboard shortcut list says "New chapter", and the home screen tagline speaks of stories.

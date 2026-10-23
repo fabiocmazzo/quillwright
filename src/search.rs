@@ -28,17 +28,6 @@ pub enum SourceKind {
     Research,
 }
 
-impl SourceKind {
-    pub fn label(self) -> &'static str {
-        match self {
-            SourceKind::Chapter => "Chapter",
-            SourceKind::Character => "Character",
-            SourceKind::Note => "Note",
-            SourceKind::Research => "Research",
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct Source {
     pub path: PathBuf,

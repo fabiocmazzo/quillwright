@@ -2,6 +2,7 @@
 //! Quillwright builds a prompt with the relevant story context, runs the configured
 //! command in the background, and shows the answer as a suggestion. Nothing is written
 //! to the manuscript until the author accepts it.
+use crate::i18n::t;
 pub use crate::kinds::ResultKind;
 use crate::kinds::{self, Kind};
 use std::{
@@ -30,6 +31,7 @@ pub struct Preset {
     pub name: &'static str,
     pub command: &'static [&'static str],
     pub prompt_as_argument: bool,
+    /// The message that describes it.
     pub note: &'static str,
 }
 
@@ -38,7 +40,7 @@ pub const PRESETS: &[Preset] = &[
         name: "Claude Code",
         command: &["claude", "-p"],
         prompt_as_argument: false,
-        note: "Uses your Claude Code login. Install: https://claude.com/claude-code",
+        note: "preset-claude-note",
     },
     Preset {
         name: "Codex",
@@ -51,13 +53,13 @@ pub const PRESETS: &[Preset] = &[
             "-",
         ],
         prompt_as_argument: false,
-        note: "Uses your Codex CLI login, in a read-only sandbox.",
+        note: "preset-codex-note",
     },
     Preset {
         name: "Ollama (local)",
         command: &["ollama", "run", "llama3.1"],
         prompt_as_argument: false,
-        note: "Runs a local model; the manuscript never leaves your machine.",
+        note: "preset-ollama-note",
     },
 ];
 
@@ -115,8 +117,10 @@ pub struct Context {
     pub files: Vec<ContextFile>,
     /// Sheets named in the document (characters): (relative path, contents).
     pub sheets: Vec<(String, String)>,
-    /// How sheets are called, singular and plural ("character sheet").
+    /// How the prompt calls sheets, singular and plural ("character sheet").
     pub sheet_words: (String, String),
+    /// How the panel lists the sheets sent, in the interface language ("1 character sheet").
+    pub sent_sheets: String,
     /// Reference passages the author added with "Use as Context".
     pub clips: Vec<Clip>,
 }
@@ -160,11 +164,15 @@ impl Context {
                     read(&file.file).map(|text| ContextFile {
                         file: file.file.clone(),
                         heading: file.heading.clone(),
-                        summary: file.summary.clone(),
+                        summary: file.summary(),
                         text: truncate(&text, file.limit.max(1)),
                     })
                 })
                 .collect(),
+            sent_sheets: match found.len() {
+                0 => String::new(),
+                n => kind.sheets.sent(n),
+            },
             sheets: found
                 .into_iter()
                 .map(|(path, text)| (path, truncate(&text, 8_000)))
@@ -182,19 +190,14 @@ impl Context {
         for file in &self.files {
             parts.push(file.summary.clone());
         }
-        let (singular, plural) = &self.sheet_words;
-        match self.sheets.len() {
-            0 => {}
-            1 => parts.push(format!("1 {singular}")),
-            n => parts.push(format!("{n} {plural}")),
+        if !self.sent_sheets.is_empty() {
+            parts.push(self.sent_sheets.clone());
         }
         if let Some((name, _)) = &self.guide {
             parts.push(name.clone());
         }
-        match self.clips.len() {
-            0 => {}
-            1 => parts.push("1 reference passage".into()),
-            n => parts.push(format!("{n} reference passages")),
+        if !self.clips.is_empty() {
+            parts.push(t!("assistant-sent-passages", count = self.clips.len()));
         }
         parts.join(", ")
     }
@@ -389,19 +392,15 @@ pub fn apply_replacement(
         char_to_byte(content, request.start),
         char_to_byte(content, request.end),
     );
-    let byte_start =
-        if content.get(a..b) == Some(request.selected.as_str()) {
-            a
-        } else {
-            let mut matches = content.match_indices(&request.selected);
-            match (matches.next(), matches.next()) {
-                (Some((found, _)), None) => found,
-                _ => return Err(
-                    "The selected passage changed since the request. Copy the suggestion instead."
-                        .into(),
-                ),
-            }
-        };
+    let byte_start = if content.get(a..b) == Some(request.selected.as_str()) {
+        a
+    } else {
+        let mut matches = content.match_indices(&request.selected);
+        match (matches.next(), matches.next()) {
+            (Some((found, _)), None) => found,
+            _ => return Err(t!("assistant-passage-changed")),
+        }
+    };
     content.replace_range(byte_start..byte_start + request.selected.len(), replacement);
     let start = content[..byte_start].chars().count();
     Ok((start, start + replacement.chars().count()))
@@ -555,14 +554,16 @@ impl Job {
                 let result = loop {
                     let status = match child.lock().unwrap().as_mut() {
                         Some(c) => c.try_wait(),
-                        None => break Err("Process lost".to_string()),
+                        None => break Err(t!("job-lost")),
                     };
                     match status {
                         Ok(Some(_)) if cancelled.load(Ordering::SeqCst) => {
                             break Err("Cancelled".into())
                         }
                         Ok(Some(status)) if status.success() => break Ok(()),
-                        Ok(Some(status)) => break Err(format!("Command failed ({status})")),
+                        Ok(Some(status)) => {
+                            break Err(t!("job-failed", status = status.to_string()))
+                        }
                         Ok(None) => thread::sleep(Duration::from_millis(30)),
                         Err(err) => break Err(err.to_string()),
                     }
@@ -656,13 +657,13 @@ mod tests {
     }
 
     /// The Novel kind's action with this label.
-    fn kind_action(label: &str) -> Action {
-        let action = novel().assistant.actions.iter().find(|a| a.label == label);
-        Action::Kind(action.expect(label).clone())
+    fn kind_action(id: &str) -> Action {
+        let action = novel().assistant.actions.iter().find(|a| a.id == id);
+        Action::Kind(action.expect(id).clone())
     }
 
     fn rewrite() -> Action {
-        kind_action("Rewrite selection")
+        kind_action("rewrite")
     }
 
     fn request(action: Action, text: &str, start: usize, end: usize) -> Request {
@@ -691,6 +692,7 @@ mod tests {
             }],
             sheets: vec![("characters/mara.md".into(), "# Mara".into())],
             sheet_words: ("character sheet".into(), "character sheets".into()),
+            sent_sheets: "1 character sheet".into(),
             clips: vec![Clip {
                 citation: "research/harbor.pdf, p. 3".into(),
                 text: "The harbor froze in 1889.".into(),
@@ -708,7 +710,7 @@ mod tests {
         assert!(prompt.contains("Never translate"));
 
         let cont = build_prompt(
-            &request(kind_action("Continue the scene"), chapter, 12, 12),
+            &request(kind_action("continue"), chapter, 12, 12),
             chapter,
             &context,
             novel(),
@@ -890,7 +892,7 @@ mod tests {
             .assistant
             .actions
             .iter()
-            .find(|a| a.label == "Check against facts")
+            .find(|a| a.id == "check")
             .unwrap();
         let req = Request {
             action: Action::Kind(action.clone()),

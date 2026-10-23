@@ -1,5 +1,6 @@
 //! The writing workspace: menus, manuscript navigator, status bar, home screen,
 //! the page, and focus mode.
+use crate::i18n::{self, t};
 use crate::{fonts, manuscript, project, reference, theme, DiscardAction, MarkdownApp};
 use eframe::egui;
 use egui::{
@@ -9,30 +10,36 @@ use egui::{
 };
 use std::path::{Path, PathBuf};
 
-/// Shortcuts shown in the help overlay, kept next to the code that handles them.
+/// Shortcuts shown in the help overlay, kept next to the code that handles them: the
+/// keys, and the message that says what they do.
 pub const SHORTCUTS: &[(&str, &str)] = &[
-    ("F11", "Focus mode (Esc to leave)"),
-    ("Ctrl+B", "Show / hide sidebar"),
-    ("Ctrl+K", "AI assistant panel"),
-    ("Ctrl+Shift+E", "Export manuscript"),
-    ("Ctrl+Enter", "Send the assistant request"),
-    ("Ctrl+Shift+T", "Typewriter scrolling"),
-    ("Ctrl+Shift+D", "Dim other paragraphs"),
-    ("Ctrl+] / Ctrl+[", "Larger / smaller text"),
-    ("Ctrl+Shift+N", "New chapter"),
-    ("Ctrl+N", "New blank document"),
-    ("Ctrl+O", "Open file"),
-    ("Ctrl+S", "Save"),
-    ("Ctrl+Shift+S / Alt+S", "Save as"),
-    ("Ctrl+Z / Ctrl+Y", "Undo / Redo"),
-    ("Ctrl+F / Ctrl+R", "Find / Replace"),
-    ("Ctrl+Shift+H", "Search the whole project"),
-    ("Ctrl+D", "Delete line"),
-    ("Page Up / Page Down", "Move one page"),
-    ("Ctrl+Shift+L / Ctrl+Shift+F", "Lint / Format Markdown"),
-    ("Ctrl+H", "Show / hide shortcuts"),
-    ("Ctrl+Q", "Quit"),
+    ("F11", "shortcut-focus"),
+    ("Ctrl+B", "shortcut-sidebar"),
+    ("Ctrl+K", "shortcut-assistant"),
+    ("Ctrl+Shift+E", "shortcut-export"),
+    ("Ctrl+Enter", "shortcut-send"),
+    ("Ctrl+Shift+T", "shortcut-typewriter"),
+    ("Ctrl+Shift+D", "shortcut-dim"),
+    ("Ctrl+] / Ctrl+[", "shortcut-text-size"),
+    ("Ctrl+Shift+N", "shortcut-new-document"),
+    ("Ctrl+N", "shortcut-blank"),
+    ("Ctrl+O", "shortcut-open"),
+    ("Ctrl+S", "shortcut-save"),
+    ("Ctrl+Shift+S / Alt+S", "shortcut-save-as"),
+    ("Ctrl+Z / Ctrl+Y", "shortcut-undo"),
+    ("Ctrl+F / Ctrl+R", "shortcut-find"),
+    ("Ctrl+Shift+H", "shortcut-search"),
+    ("Ctrl+D", "shortcut-delete-line"),
+    ("Page Up / Page Down", "shortcut-page"),
+    ("Ctrl+Shift+L / Ctrl+Shift+F", "shortcut-lint"),
+    ("Ctrl+H", "shortcut-help"),
+    ("Ctrl+Q", "shortcut-quit"),
 ];
+
+/// A menu item's label with its keyboard shortcut.
+fn keys(label: String, keys: &str) -> String {
+    format!("{label}\t{keys}")
+}
 
 /// Things the sidebar or home screen asked for; applied after drawing.
 enum NavAction {
@@ -62,21 +69,21 @@ impl MarkdownApp {
             )
             .show(root, |ui| {
                 egui::MenuBar::new().ui(ui, |ui| {
-                    ui.menu_button("File", |ui| self.file_menu(ui));
-                    ui.menu_button("View", |ui| self.view_menu(ui));
-                    ui.menu_button("Assistant", |ui| self.assistant_menu(ui));
-                    ui.menu_button("Tools", |ui| {
-                        if ui.button("Lint Markdown\tCtrl+Shift+L").clicked() {
+                    ui.menu_button(t!("menu-file"), |ui| self.file_menu(ui));
+                    ui.menu_button(t!("menu-view"), |ui| self.view_menu(ui));
+                    ui.menu_button(t!("menu-assistant"), |ui| self.assistant_menu(ui));
+                    ui.menu_button(t!("menu-tools"), |ui| {
+                        if ui.button(keys(t!("menu-lint"), "Ctrl+Shift+L")).clicked() {
                             self.pending_lint = true;
                             ui.close();
                         }
-                        if ui.button("Format Markdown\tCtrl+Shift+F").clicked() {
+                        if ui.button(keys(t!("menu-format"), "Ctrl+Shift+F")).clicked() {
                             self.pending_format = true;
                             ui.close();
                         }
                     });
-                    ui.menu_button("Help", |ui| {
-                        if ui.button("Keyboard Shortcuts\tCtrl+H").clicked() {
+                    ui.menu_button(t!("menu-help"), |ui| {
+                        if ui.button(keys(t!("menu-shortcuts"), "Ctrl+H")).clicked() {
                             self.show_help_overlay = true;
                             ui.close();
                         }
@@ -86,7 +93,7 @@ impl MarkdownApp {
     }
 
     fn file_menu(&mut self, ui: &mut Ui) {
-        let documents = format!("{}\tCtrl+Shift+N", self.kind.documents.new_menu_label());
+        let documents = keys(self.kind.documents.new_menu_label(), "Ctrl+Shift+N");
         if ui.button(documents).clicked() {
             self.create_chapter();
             ui.close();
@@ -98,49 +105,52 @@ impl MarkdownApp {
         if ui
             .add_enabled(
                 self.in_project_for_research(),
-                Button::new("Add Research Files..."),
+                Button::new(t!("menu-add-research")),
             )
-            .on_hover_text("Copy PDFs, images, and notes into the project's research folder")
+            .on_hover_text(t!("menu-add-research.hint"))
             .clicked()
         {
             self.add_research_files();
             ui.close();
         }
         ui.separator();
-        if ui.button("New Project...").clicked() {
+        if ui.button(t!("menu-new-project")).clicked() {
             self.open_new_project_dialog();
             ui.close();
         }
-        if ui.button("Open Project...").clicked() {
+        if ui.button(t!("menu-open-project")).clicked() {
             self.pick_project();
             ui.close();
         }
-        if ui.button("Project Home").clicked() {
+        if ui.button(t!("menu-project-home")).clicked() {
             self.go_home();
             ui.close();
         }
         ui.separator();
-        if ui.button("New Blank Document\tCtrl+N").clicked() {
+        if ui.button(keys(t!("menu-new-blank"), "Ctrl+N")).clicked() {
             self.run_or_prompt_discard(DiscardAction::NewDocument);
             ui.close();
         }
-        if ui.button("Open File...\tCtrl+O").clicked() {
+        if ui.button(keys(t!("menu-open-file"), "Ctrl+O")).clicked() {
             self.run_or_prompt_discard(DiscardAction::OpenDialog);
             ui.close();
         }
         ui.separator();
-        if ui.button("Save\tCtrl+S").clicked() {
+        if ui.button(keys(t!("menu-save"), "Ctrl+S")).clicked() {
             self.save_file(false);
             ui.close();
         }
-        if ui.button("Save As...\tCtrl+Shift+S").clicked() {
+        if ui
+            .button(keys(t!("menu-save-as"), "Ctrl+Shift+S"))
+            .clicked()
+        {
             self.save_file(true);
             ui.close();
         }
         let mut autosave = self.config.editor.autosave;
         if ui
-            .checkbox(&mut autosave, "Autosave")
-            .on_hover_text("Save the open file a moment after you stop typing")
+            .checkbox(&mut autosave, t!("menu-autosave"))
+            .on_hover_text(t!("menu-autosave.hint"))
             .changed()
         {
             self.config.editor.autosave = autosave;
@@ -148,26 +158,29 @@ impl MarkdownApp {
         }
         let has_history = self.file_path.is_some() && self.history_root.is_some();
         if ui
-            .add_enabled(has_history, Button::new("Version History..."))
-            .on_hover_text("Earlier versions of this file, kept on this computer")
+            .add_enabled(has_history, Button::new(t!("menu-history")))
+            .on_hover_text(t!("menu-history.hint"))
             .clicked()
         {
             self.open_history();
             ui.close();
         }
-        if ui.button("Export Manuscript...\tCtrl+Shift+E").clicked() {
+        if ui.button(keys(t!("menu-export"), "Ctrl+Shift+E")).clicked() {
             self.open_export();
             ui.close();
         }
         ui.separator();
-        if ui.button("Exit\tCtrl+Q").clicked() {
+        if ui.button(keys(t!("menu-exit"), "Ctrl+Q")).clicked() {
             self.pending_exit = true;
             ui.close();
         }
     }
 
     fn assistant_menu(&mut self, ui: &mut Ui) {
-        if ui.button("Assistant Panel\tCtrl+K").clicked() {
+        if ui
+            .button(keys(t!("menu-assistant-panel"), "Ctrl+K"))
+            .clicked()
+        {
             self.toggle_assistant();
             ui.close();
         }
@@ -177,7 +190,7 @@ impl MarkdownApp {
         for action in &self.kind.assistant.actions {
             let enabled = !running && (!action.needs_selection || has_selection);
             if ui
-                .add_enabled(enabled, Button::new(action.label.as_str()))
+                .add_enabled(enabled, Button::new(action.label()))
                 .clicked()
             {
                 let ctx = ui.ctx().clone();
@@ -187,16 +200,16 @@ impl MarkdownApp {
             }
         }
         ui.separator();
-        if ui.button("Assistant Settings...").clicked() {
+        if ui.button(t!("menu-assistant-settings")).clicked() {
             self.open_assistant_settings();
             ui.close();
         }
     }
 
     fn view_menu(&mut self, ui: &mut Ui) {
-        ui.label(RichText::new("Theme").small().weak());
+        ui.label(RichText::new(t!("menu-theme")).small().weak());
         let follows = theme::follows_system(&self.config.theme.base);
-        if ui.radio(follows, "Match System").clicked() {
+        if ui.radio(follows, t!("menu-theme-system")).clicked() {
             self.set_theme(theme::SYSTEM);
             ui.close();
         }
@@ -211,16 +224,19 @@ impl MarkdownApp {
             }
         }
         ui.separator();
-        if ui.button("Focus Mode\tF11").clicked() {
+        if ui.button(keys(t!("menu-focus"), "F11")).clicked() {
             self.pending_focus_toggle = true;
             ui.close();
         }
         let mut sidebar = self.config.view.sidebar;
-        if ui.checkbox(&mut sidebar, "Sidebar\tCtrl+B").changed() {
+        if ui
+            .checkbox(&mut sidebar, keys(t!("menu-sidebar"), "Ctrl+B"))
+            .changed()
+        {
             self.config.view.sidebar = sidebar;
             self.save_config();
         }
-        if ui.button("Search Project...\tCtrl+Shift+H").clicked() {
+        if ui.button(keys(t!("menu-search"), "Ctrl+Shift+H")).clicked() {
             self.open_project_search();
             ui.close();
         }
@@ -228,17 +244,17 @@ impl MarkdownApp {
         if ui
             .add_enabled(
                 self.reference.has_file(),
-                egui::Checkbox::new(&mut reference, "Reference Panel"),
+                egui::Checkbox::new(&mut reference, t!("menu-reference")),
             )
-            .on_hover_text("The research file you opened last")
+            .on_hover_text(t!("menu-reference.hint"))
             .changed()
         {
             self.toggle_reference();
         }
         let mut typewriter = self.config.editor.typewriter;
         if ui
-            .checkbox(&mut typewriter, "Typewriter Scrolling\tCtrl+Shift+T")
-            .on_hover_text("Keep the line you are writing in the middle of the screen")
+            .checkbox(&mut typewriter, keys(t!("menu-typewriter"), "Ctrl+Shift+T"))
+            .on_hover_text(t!("menu-typewriter.hint"))
             .changed()
         {
             self.config.editor.typewriter = typewriter;
@@ -246,38 +262,57 @@ impl MarkdownApp {
         }
         let mut dim = self.config.editor.dim_paragraphs;
         if ui
-            .checkbox(&mut dim, "Dim Other Paragraphs\tCtrl+Shift+D")
-            .on_hover_text("Fade everything except the paragraph you are writing")
+            .checkbox(&mut dim, keys(t!("menu-dim"), "Ctrl+Shift+D"))
+            .on_hover_text(t!("menu-dim.hint"))
             .changed()
         {
             self.config.editor.dim_paragraphs = dim;
             self.save_config();
         }
         let mut numbers = self.config.editor.line_numbers;
-        if ui.checkbox(&mut numbers, "Line Numbers").changed() {
+        if ui.checkbox(&mut numbers, t!("menu-line-numbers")).changed() {
             self.config.editor.line_numbers = numbers;
             self.save_config();
         }
         self.spelling_menu(ui);
+        ui.menu_button(t!("menu-language"), |ui| {
+            let mut choice = None;
+            let chosen = &self.config.view.language;
+            if ui
+                .radio(chosen.is_empty(), t!("menu-language-system"))
+                .clicked()
+            {
+                choice = Some(String::new());
+            }
+            for language in i18n::LANGUAGES {
+                if ui.radio(chosen == language.id, language.name).clicked() {
+                    choice = Some(language.id.to_string());
+                }
+            }
+            if let Some(id) = choice {
+                self.set_language(&id);
+                ui.close();
+            }
+        });
         ui.separator();
-        if ui.button("Larger Text\tCtrl+]").clicked() {
+        if ui.button(keys(t!("menu-larger"), "Ctrl+]")).clicked() {
             self.change_text_size(ui.ctx(), 1.0);
         }
-        if ui.button("Smaller Text\tCtrl+[").clicked() {
+        if ui.button(keys(t!("menu-smaller"), "Ctrl+[")).clicked() {
             self.change_text_size(ui.ctx(), -1.0);
         }
-        if ui.button("Default Text Size").clicked() {
+        if ui.button(t!("menu-default-size")).clicked() {
             let delta =
                 crate::editor::EditorConfig::default().font_size - fonts::typography(ui.ctx()).size;
             self.change_text_size(ui.ctx(), delta);
             ui.close();
         }
         ui.separator();
-        ui.label(RichText::new("Session goal (words)").small().weak());
+        ui.label(RichText::new(t!("menu-session-goal")).small().weak());
         let mut goal = self.config.view.session_goal;
         if ui
             .add(egui::DragValue::new(&mut goal).speed(50).range(0..=100_000))
-            .on_hover_text("0 hides the goal")
+            .on_hover_text(t!("menu-session-goal.hint"))
             .changed()
         {
             self.config.view.session_goal = goal;
@@ -297,6 +332,16 @@ impl MarkdownApp {
             kind: crate::kinds::default_kind(),
             error: None,
         });
+    }
+
+    /// Sets the interface language: an id from [`i18n::LANGUAGES`], or "" for the system's.
+    pub(crate) fn set_language(&mut self, id: &str) {
+        self.config.view.language = id.to_string();
+        i18n::set_language(id);
+        self.save_config();
+        // Texts kept between frames are rebuilt in the new language.
+        self.window_title.clear();
+        self.index_dirty = true;
     }
 
     /// Sets the theme: a preset name, or [`theme::SYSTEM`].
@@ -335,9 +380,7 @@ impl MarkdownApp {
                 self.index_dirty = true;
                 self.run_or_prompt_discard(DiscardAction::OpenPath(path));
             }
-            Err(err) => {
-                self.show_tool_message(format!("Could not create {}: {err}", section.singular))
-            }
+            Err(err) => self.show_tool_message(t!("create-file-failed", error = err.to_string())),
         }
     }
 
@@ -347,10 +390,7 @@ impl MarkdownApp {
                 self.index_dirty = true;
                 self.run_or_prompt_discard(DiscardAction::OpenPath(path));
             }
-            Err(err) => self.show_tool_message(format!(
-                "Could not create {}: {err}",
-                self.kind.sheets.singular
-            )),
+            Err(err) => self.show_tool_message(t!("create-file-failed", error = err.to_string())),
         }
     }
 
@@ -388,14 +428,14 @@ impl MarkdownApp {
                     // The buttons take their space first; a long name is cut short with
                     // "…" in what is left instead of running under them.
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if quiet_button(ui, "Home", &p)
-                            .on_hover_text("Project home")
+                        if quiet_button(ui, &t!("sidebar-home"), &p)
+                            .on_hover_text(t!("sidebar-home.hint"))
                             .clicked()
                         {
                             action = Some(NavAction::Home);
                         }
-                        if quiet_button(ui, "Open…", &p)
-                            .on_hover_text("Open another project")
+                        if quiet_button(ui, &t!("sidebar-open"), &p)
+                            .on_hover_text(t!("sidebar-open.hint"))
                             .clicked()
                         {
                             action = Some(NavAction::PickProject);
@@ -416,8 +456,8 @@ impl MarkdownApp {
                 if index.has_documents_dir {
                     ui.label(
                         RichText::new(format!(
-                            "{} words · {}",
-                            manuscript::group(total),
+                            "{} · {}",
+                            words(total),
                             kind.documents.count(index.documents.len())
                         ))
                         .size(12.0)
@@ -441,11 +481,11 @@ impl MarkdownApp {
                         if index.has_documents_dir {
                             let documents = &kind.documents;
                             let new = documents.new_label();
-                            if section(ui, &documents.label, Some(&new), &p) {
+                            if section(ui, &documents.label(), Some(&new), &p) {
                                 action = Some(NavAction::NewChapter);
                             }
                             if index.documents.is_empty() {
-                                hint(ui, &documents.empty_hint, &p);
+                                hint(ui, &documents.empty_hint(), &p);
                             }
                             for (i, entry) in index.documents.iter().enumerate() {
                                 let selected = current.as_ref() == Some(&entry.path);
@@ -463,7 +503,7 @@ impl MarkdownApp {
                         }
 
                         if outline.len() > 1 || outline.first().is_some_and(|h| h.level > 1) {
-                            section(ui, "Outline", None, &p);
+                            section(ui, &t!("sidebar-outline"), None, &p);
                             let active = outline
                                 .iter()
                                 .rposition(|heading| heading.char_index <= cursor);
@@ -480,7 +520,7 @@ impl MarkdownApp {
 
                         if index.has_sheets_dir {
                             let new = kind.sheets.new_label();
-                            if section(ui, &kind.sheets.label, Some(&new), &p) {
+                            if section(ui, &kind.sheets.label(), Some(&new), &p) {
                                 action = Some(NavAction::NewCharacter);
                             }
                             for entry in &index.sheets {
@@ -495,7 +535,7 @@ impl MarkdownApp {
                         }
 
                         if !index.notes.is_empty() {
-                            section(ui, "Notes", None, &p);
+                            section(ui, &t!("sidebar-notes"), None, &p);
                             for entry in &index.notes {
                                 let selected = current.as_ref() == Some(&entry.path);
                                 if nav_row(ui, selected, 0.0, &entry.title, None, &p)
@@ -509,11 +549,12 @@ impl MarkdownApp {
 
                         if self.in_project_for_research() {
                             let research = &kind.research;
-                            if section(ui, &research.label, Some("Add research files"), &p) {
+                            let add = t!("sidebar-add-research");
+                            if section(ui, &research.label(), Some(&add), &p) {
                                 action = Some(NavAction::AddResearch);
                             }
                             if index.research.is_empty() {
-                                hint(ui, &research.hint, &p);
+                                hint(ui, &research.hint(), &p);
                             }
                             let research_dir = self.working_dir.join(&research.folder);
                             let showing = self.reference.showing();
@@ -525,7 +566,7 @@ impl MarkdownApp {
                                     .to_string();
                                 let kind = reference::Kind::of(path);
                                 let selected = showing == Some(path.as_path());
-                                if nav_row(ui, selected, 0.0, &label, Some(kind.label().into()), &p)
+                                if nav_row(ui, selected, 0.0, &label, Some(kind.label()), &p)
                                     .on_hover_text(file_label(path))
                                     .clicked()
                                 {
@@ -537,7 +578,7 @@ impl MarkdownApp {
                         ui.add_space(10.0);
                         let structured = index.has_documents_dir || index.has_sheets_dir;
                         egui::CollapsingHeader::new(
-                            RichText::new("ALL FILES")
+                            RichText::new(t!("sidebar-all-files").to_uppercase())
                                 .size(11.0)
                                 .color(p.muted)
                                 .strong(),
@@ -549,7 +590,7 @@ impl MarkdownApp {
                                 let root = self.working_dir.clone();
                                 self.render_entries(ui, &root);
                             } else {
-                                hint(ui, "This folder is unavailable.", &p);
+                                hint(ui, &t!("sidebar-folder-unavailable"), &p);
                             }
                         });
                     });
@@ -613,13 +654,17 @@ impl MarkdownApp {
                 ui.horizontal(|ui| {
                     let small = |text: String| RichText::new(text).size(12.5).color(p.muted);
                     if self.modified && self.can_save_silently() {
-                        ui.label(RichText::new("Edited").size(12.5).color(p.muted))
-                            .on_hover_text("Saves automatically when you pause");
+                        ui.label(RichText::new(t!("status-edited")).size(12.5).color(p.muted))
+                            .on_hover_text(t!("status-edited.autosave"));
                     } else if self.modified {
-                        ui.label(RichText::new("• Edited").size(12.5).color(p.accent))
-                            .on_hover_text("Unsaved changes (Ctrl+S to save)");
+                        ui.label(
+                            RichText::new(format!("• {}", t!("status-edited")))
+                                .size(12.5)
+                                .color(p.accent),
+                        )
+                        .on_hover_text(t!("status-edited.unsaved"));
                     } else {
-                        ui.label(RichText::new("Saved").size(12.5).color(p.muted));
+                        ui.label(RichText::new(t!("status-saved")).size(12.5).color(p.muted));
                     }
                     ui.label(
                         RichText::new(self.document_title())
@@ -630,7 +675,7 @@ impl MarkdownApp {
                         self.file_path
                             .as_ref()
                             .map(|path| path.display().to_string())
-                            .unwrap_or_else(|| "Not saved yet".into()),
+                            .unwrap_or_else(|| t!("status-not-saved")),
                     );
                     if let Some(notice) = &self.sync_notice {
                         ui.label(small(notice.clone()));
@@ -651,40 +696,59 @@ impl MarkdownApp {
                                     .corner_radius(3)
                                     .fill(p.accent),
                             )
-                            .on_hover_text(format!(
-                                "Session goal: {} of {} words",
-                                manuscript::group(session.max(0) as usize),
-                                manuscript::group(goal)
+                            .on_hover_text(t!(
+                                "status-goal",
+                                words = i18n::group(session.max(0) as usize),
+                                goal = i18n::group(goal),
+                                count = goal
                             ));
                         }
                         // Right to left: the first part added sits at the far right.
                         let sign = if session >= 0 { "+" } else { "−" };
-                        let mut parts = vec![format!(
-                            "{sign}{} this session",
-                            manuscript::group(session.unsigned_abs() as usize)
+                        let session_words = session.unsigned_abs() as usize;
+                        let mut parts = vec![t!(
+                            "status-session",
+                            words = format!("{sign}{}", i18n::group(session_words)),
+                            count = session_words
                         )];
                         if self.index.has_documents_dir {
-                            parts.push(format!("{} in manuscript", manuscript::group(total)));
+                            parts.push(t!(
+                                "status-manuscript",
+                                words = i18n::group(total),
+                                count = total
+                            ));
                         }
                         if !self.show_home || self.file_path.is_some() {
+                            let count = self.current_words;
+                            let words = if is_chapter {
+                                let (document, gender) = self.kind.documents.noun();
+                                t!(
+                                    "status-words-in",
+                                    words = i18n::group(count),
+                                    count = count,
+                                    document = document,
+                                    gender = gender
+                                )
+                            } else {
+                                words(count)
+                            };
+                            let minutes = manuscript::reading_minutes(count);
                             parts.push(format!(
-                                "{} words{} · {} min read",
-                                manuscript::group(self.current_words),
-                                if is_chapter {
-                                    format!(" in {}", self.kind.documents.singular)
-                                } else {
-                                    String::new()
-                                },
-                                manuscript::reading_minutes(self.current_words)
+                                "{words} · {}",
+                                t!("status-reading", minutes = minutes)
                             ));
                             if let Some(words) = selected_words {
-                                parts.push(format!("{} selected", manuscript::group(words)));
+                                parts.push(t!(
+                                    "status-selected",
+                                    words = i18n::group(words),
+                                    count = words
+                                ));
                             }
-                            parts.push(format!("Ln {}", self.current_line + 1));
+                            parts.push(t!("status-line", line = self.current_line + 1));
                         }
                         parts.reverse();
                         ui.label(small(parts.join("  ·  ")))
-                            .on_hover_text("Session words count only what you type here");
+                            .on_hover_text(t!("status-session.hint"));
                     });
                 });
             });
@@ -693,8 +757,8 @@ impl MarkdownApp {
     pub(crate) fn document_title(&self) -> String {
         match &self.file_path {
             Some(path) => manuscript::title(&self.content, path),
-            None if self.show_home && !self.modified => "Home".into(),
-            None => "Untitled".into(),
+            None if self.show_home && !self.modified => t!("title-home"),
+            None => t!("title-untitled"),
         }
     }
 
@@ -723,7 +787,7 @@ impl MarkdownApp {
                                     .color(p.text),
                             );
                             ui.label(
-                                RichText::new("A quiet room for long stories.")
+                                RichText::new(t!("home-tagline"))
                                     .font(FontId::new(17.0, fonts::family(false, true)))
                                     .color(p.muted),
                             );
@@ -734,7 +798,9 @@ impl MarkdownApp {
                         if has_project {
                             card(ui, &p, |ui| {
                                 ui.label(
-                                    RichText::new("CURRENT PROJECT").size(11.0).color(p.muted),
+                                    RichText::new(t!("home-current-project").to_uppercase())
+                                        .size(11.0)
+                                        .color(p.muted),
                                 );
                                 ui.label(
                                     RichText::new(folder_name(&self.working_dir))
@@ -743,12 +809,10 @@ impl MarkdownApp {
                                 );
                                 ui.label(
                                     RichText::new(format!(
-                                        "{} words · {} {} · {} {}",
-                                        manuscript::group(index.manuscript_words(None)),
-                                        index.documents.len(),
-                                        kind.documents.plural,
-                                        index.sheets.len(),
-                                        kind.sheets.plural
+                                        "{} · {} · {}",
+                                        words(index.manuscript_words(None)),
+                                        kind.documents.count(index.documents.len()),
+                                        kind.sheets.count(index.sheets.len())
                                     ))
                                     .size(13.0)
                                     .color(p.muted),
@@ -756,13 +820,12 @@ impl MarkdownApp {
                                 ui.add_space(14.0);
                                 let (label, target) = match index.documents.last() {
                                     Some(last) => (
-                                        format!("Continue writing  “{}”", last.title),
+                                        t!("home-continue", title = last.title.as_str()),
                                         Some(NavAction::Open(last.path.clone())),
                                     ),
-                                    None => (
-                                        kind.documents.first_action.clone(),
-                                        Some(NavAction::NewChapter),
-                                    ),
+                                    None => {
+                                        (kind.documents.first_action(), Some(NavAction::NewChapter))
+                                    }
                                 };
                                 if ui
                                     .add_sized(
@@ -779,21 +842,30 @@ impl MarkdownApp {
                         }
 
                         ui.columns(3, |cols| {
-                            let big = |text: &str| RichText::new(text).size(14.0);
+                            let big = |key: &str| RichText::new(t!(key)).size(14.0);
                             if cols[0]
-                                .add_sized([cols[0].available_width(), 34.0], Button::new(big("New Project…")))
+                                .add_sized(
+                                    [cols[0].available_width(), 34.0],
+                                    Button::new(big("home-new-project")),
+                                )
                                 .clicked()
                             {
                                 action = Some(NavAction::NewProject);
                             }
                             if cols[1]
-                                .add_sized([cols[1].available_width(), 34.0], Button::new(big("Open Project…")))
+                                .add_sized(
+                                    [cols[1].available_width(), 34.0],
+                                    Button::new(big("home-open-project")),
+                                )
                                 .clicked()
                             {
                                 action = Some(NavAction::PickProject);
                             }
                             if cols[2]
-                                .add_sized([cols[2].available_width(), 34.0], Button::new(big("Blank Page")))
+                                .add_sized(
+                                    [cols[2].available_width(), 34.0],
+                                    Button::new(big("home-blank-page")),
+                                )
                                 .clicked()
                             {
                                 action = Some(NavAction::BlankPage);
@@ -809,7 +881,7 @@ impl MarkdownApp {
                             .collect();
                         if !recent.is_empty() {
                             ui.add_space(12.0);
-                            section(ui, "Recent projects", None, &p);
+                            section(ui, &t!("home-recent"), None, &p);
                             for path in recent {
                                 let parent = path
                                     .parent()
@@ -825,11 +897,7 @@ impl MarkdownApp {
 
                         ui.add_space(28.0);
                         ui.vertical_centered(|ui| {
-                            ui.label(
-                                RichText::new("F11 focus mode   ·   Ctrl+B sidebar   ·   Ctrl+H all shortcuts")
-                                    .size(12.0)
-                                    .color(p.muted),
-                            );
+                            ui.label(RichText::new(t!("home-keys")).size(12.0).color(p.muted));
                         });
                         ui.add_space(24.0);
                     });
@@ -905,17 +973,19 @@ impl MarkdownApp {
             .anchor(Align2::RIGHT_BOTTOM, egui::vec2(-20.0, -14.0))
             .interactable(false)
             .show(ctx, |ui| {
-                let mut text = format!("{} words", manuscript::group(self.current_words));
+                let mut text = words(self.current_words);
                 let goal = self.config.view.session_goal;
                 if goal > 0 {
-                    text.push_str(&format!(
-                        "  ·  {} / {} this session",
-                        manuscript::group(self.session_words.max(0) as usize),
-                        manuscript::group(goal)
+                    text.push_str("  ·  ");
+                    text.push_str(&t!(
+                        "focus-goal",
+                        words = i18n::group(self.session_words.max(0) as usize),
+                        goal = i18n::group(goal)
                     ));
                 }
                 if self.modified {
-                    text.push_str("  ·  unsaved");
+                    text.push_str("  ·  ");
+                    text.push_str(&t!("focus-unsaved"));
                 }
                 ui.label(RichText::new(text).size(12.0).color(faint));
             });
@@ -928,7 +998,7 @@ impl MarkdownApp {
                 .interactable(false)
                 .show(ctx, |ui| {
                     ui.label(
-                        RichText::new("Focus mode — press F11 or Esc to leave")
+                        RichText::new(t!("focus-hint"))
                             .size(12.5)
                             .color(faint.gamma_multiply(alpha)),
                     );
@@ -985,11 +1055,16 @@ fn file_label(path: &Path) -> String {
         .unwrap_or_default()
 }
 
+/// "1 word", "12,345 words".
+pub(crate) fn words(n: usize) -> String {
+    t!("words", words = i18n::group(n), count = n)
+}
+
 fn short_count(words: usize) -> String {
     if words >= 10_000 {
-        format!("{:.1}k", words as f32 / 1000.0)
+        t!("thousands", count = format!("{:.1}", words as f32 / 1000.0))
     } else {
-        manuscript::group(words)
+        i18n::group(words)
     }
 }
 

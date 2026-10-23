@@ -1,5 +1,6 @@
 //! Export the manuscript, entirely in Rust: chapters are parsed into a small
 //! document tree ([`book`]) and written as DOCX, EPUB, PDF, ODT, or HTML.
+use crate::i18n::t;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -40,24 +41,23 @@ impl Format {
         Format::Html,
     ];
 
-    pub fn label(self) -> &'static str {
+    /// The message that names it; its `.hint` says what it is for.
+    fn key(self) -> &'static str {
         match self {
-            Format::Docx => "Word (.docx)",
-            Format::Epub => "EPUB e-book (.epub)",
-            Format::Pdf => "PDF (.pdf)",
-            Format::Odt => "OpenDocument (.odt)",
-            Format::Html => "Web page (.html)",
+            Format::Docx => "format-docx",
+            Format::Epub => "format-epub",
+            Format::Pdf => "format-pdf",
+            Format::Odt => "format-odt",
+            Format::Html => "format-html",
         }
     }
 
-    pub fn hint(self) -> &'static str {
-        match self {
-            Format::Docx => "For editors, agents, and Google Docs",
-            Format::Epub => "For e-readers and beta readers",
-            Format::Pdf => "For printing and sharing a fixed layout",
-            Format::Odt => "For LibreOffice",
-            Format::Html => "A single self-contained page",
-        }
+    pub fn label(self) -> String {
+        t!(self.key())
+    }
+
+    pub fn hint(self) -> String {
+        t!(&format!("{}.hint", self.key()))
     }
 
     pub fn extension(self) -> &'static str {
@@ -96,13 +96,13 @@ impl PageSize {
         PageSize::Letter,
     ];
 
-    pub fn label(self) -> &'static str {
-        match self {
-            PageSize::A5 => "A5 (148 × 210 mm)",
-            PageSize::A4 => "A4 (210 × 297 mm)",
-            PageSize::Letter => "US Letter (8.5 × 11 in)",
-            PageSize::Trade => "Trade paperback (6 × 9 in)",
-        }
+    pub fn label(self) -> String {
+        t!(match self {
+            PageSize::A5 => "page-a5",
+            PageSize::A4 => "page-a4",
+            PageSize::Letter => "page-letter",
+            PageSize::Trade => "page-trade",
+        })
     }
 
     /// Width and height in millimetres.
@@ -185,10 +185,18 @@ pub fn export(options: &Options, sources: &[Source], project: &Path) -> Result<O
         match std::fs::read_to_string(&metadata) {
             Ok(yaml) => {
                 if let Err(e) = book::read_metadata(&yaml, &mut meta) {
-                    warnings.push(format!("{METADATA_FILE} was ignored: {e}"));
+                    warnings.push(t!(
+                        "export-metadata-ignored",
+                        file = METADATA_FILE,
+                        error = e.to_string()
+                    ));
                 }
             }
-            Err(e) => warnings.push(format!("Could not read {METADATA_FILE}: {e}")),
+            Err(e) => warnings.push(t!(
+                "cannot-read",
+                path = METADATA_FILE,
+                error = e.to_string()
+            )),
         }
     }
     if meta.title.is_empty() {
@@ -196,7 +204,7 @@ pub fn export(options: &Options, sources: &[Source], project: &Path) -> Result<O
     }
     let mut book = Book::build(meta, sources, project);
     if book.chapters.is_empty() {
-        return Err("There are no chapters to export.".into());
+        return Err(t!("export-nothing"));
     }
     warnings.append(&mut book.warnings);
 
@@ -204,7 +212,7 @@ pub fn export(options: &Options, sources: &[Source], project: &Path) -> Result<O
         let path = project.join(name);
         path.is_file().then(|| std::fs::read(path).ok()).flatten()
     };
-    let zip_error = |e: zip::result::ZipError| format!("Could not write the file: {e}");
+    let zip_error = |e: zip::result::ZipError| t!("export-write-failed", error = e.to_string());
     let bytes = match options.format {
         Format::Html => html::page(&book, options.table_of_contents).into_bytes(),
         Format::Epub => epub::write(&book, options.table_of_contents).map_err(zip_error)?,
@@ -216,7 +224,7 @@ pub fn export(options: &Options, sources: &[Source], project: &Path) -> Result<O
                     Some(styles) => xml::replace_entries(&bytes, &[("styles.xml", styles)])
                         .map_err(zip_error)?,
                     None => {
-                        warnings.push(format!("{REFERENCE_ODT} has no styles and was ignored."));
+                        warnings.push(t!("export-no-styles", file = REFERENCE_ODT));
                         bytes
                     }
                 },
@@ -230,7 +238,7 @@ pub fn export(options: &Options, sources: &[Source], project: &Path) -> Result<O
                     Some(styles) => xml::replace_entries(&bytes, &[("word/styles.xml", styles)])
                         .map_err(zip_error)?,
                     None => {
-                        warnings.push(format!("{REFERENCE_DOCX} has no styles and was ignored."));
+                        warnings.push(t!("export-no-styles", file = REFERENCE_DOCX));
                         bytes
                     }
                 },

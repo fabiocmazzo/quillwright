@@ -91,7 +91,7 @@ impl Document {
             .map_err(|e| e.to_string())?;
         let pages = ready_rx
             .recv()
-            .map_err(|_| "The PDF could not be read.".to_string())??;
+            .map_err(|_| crate::i18n::t!("pdf-unreadable"))??;
         Ok(Document { pages, shared })
     }
 
@@ -151,7 +151,7 @@ fn run(
     };
     let pages = pdf.pages();
     if pages.is_empty() {
-        let _ = ready.send(Err("This PDF has no pages.".into()));
+        let _ = ready.send(Err(crate::i18n::t!("pdf-no-pages")));
         return;
     }
     let sizes: Vec<[f32; 2]> = pages
@@ -312,9 +312,9 @@ fn render<'a>(
 fn load_error(error: &LoadPdfError) -> String {
     match error {
         LoadPdfError::Decryption(_) => {
-            "This PDF is protected with a password, which Quillwright can't open yet.".into()
+            crate::i18n::t!("pdf-password")
         }
-        _ => "This file doesn't look like a PDF Quillwright can read.".into(),
+        _ => crate::i18n::t!("pdf-invalid"),
     }
 }
 

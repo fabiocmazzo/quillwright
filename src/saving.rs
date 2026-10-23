@@ -1,4 +1,5 @@
 //! Autosave, saving before leaving a file, and the Version History window.
+use crate::i18n::t;
 use crate::{assistant_ui, file_sync, history, manuscript, theme, MarkdownApp};
 use eframe::egui;
 use egui::{Context, RichText};
@@ -56,7 +57,10 @@ impl MarkdownApp {
             return;
         }
         if let Err(err) = self.save_in_place() {
-            self.sync_notice = Some(format!("⚠ Autosave failed: {err}"));
+            self.sync_notice = Some(format!(
+                "⚠ {}",
+                t!("autosave-failed", error = err.to_string())
+            ));
             self.saving.retry_at = now + RETRY_AFTER;
         }
     }
@@ -66,7 +70,7 @@ impl MarkdownApp {
     pub(crate) fn save_before_leaving(&mut self) -> bool {
         if self.modified && self.can_save_silently() {
             if let Err(err) = self.save_in_place() {
-                self.show_tool_message(format!("Save error: {err}"));
+                self.show_tool_message(t!("save-failed", error = err.to_string()));
             }
         }
         !self.modified
@@ -109,7 +113,10 @@ impl MarkdownApp {
             return;
         };
         if let Err(err) = history::record(root, file, text, force, SystemTime::now()) {
-            self.sync_notice = Some(format!("⚠ Could not keep a history copy: {err}"));
+            self.sync_notice = Some(format!(
+                "⚠ {}",
+                t!("history-copy-failed", error = err.to_string())
+            ));
         }
     }
 
@@ -134,7 +141,7 @@ impl MarkdownApp {
     }
 
     pub(crate) fn show_history_window(&mut self, ctx: &Context) {
-        let title = format!("Version History — {}", self.document_title());
+        let title = t!("history-title", title = self.document_title());
         let Some(view) = &mut self.saving.history else {
             return;
         };
@@ -146,7 +153,9 @@ impl MarkdownApp {
             if view.text.is_none() {
                 match snapshot.read() {
                     Ok(text) => view.text = Some(text),
-                    Err(err) => view.error = Some(format!("Could not read this copy: {err}")),
+                    Err(err) => {
+                        view.error = Some(t!("history-read-failed", error = err.to_string()))
+                    }
                 }
                 view.diff = None;
             }
@@ -166,15 +175,8 @@ impl MarkdownApp {
             .default_size([760.0, 520.0])
             .show(ctx, |ui| {
                 if view.snapshots.is_empty() {
-                    ui.label("No earlier versions of this file yet.");
-                    ui.label(
-                        RichText::new(
-                            "A copy is kept when a save replaces the file (at most every \
-                             10 minutes, and always before a large cut), and whenever an \
-                             agent's change replaces the text in the editor.",
-                        )
-                        .color(p.muted),
-                    );
+                    ui.label(t!("history-empty"));
+                    ui.label(RichText::new(t!("history-empty.when")).color(p.muted));
                     return;
                 }
                 ui.horizontal_top(|ui| {
@@ -186,7 +188,8 @@ impl MarkdownApp {
                                 for (i, snapshot) in view.snapshots.iter().enumerate() {
                                     let mut label = history::time_label(snapshot.time, now);
                                     if let Some(words) = view.words[i] {
-                                        label.push_str(&format!("\n{words} words"));
+                                        label.push('\n');
+                                        label.push_str(&crate::workspace::words(words));
                                     }
                                     let response = ui.add_sized(
                                         [ui.available_width(), 0.0],
@@ -203,12 +206,9 @@ impl MarkdownApp {
                     ui.separator();
                     ui.vertical(|ui| {
                         ui.label(
-                            RichText::new(
-                                "Compared with the text in the editor: struck-through text \
-                                 is only in the editor, highlighted text is only in this version.",
-                            )
-                            .size(12.5)
-                            .color(p.muted),
+                            RichText::new(t!("history-compared"))
+                                .size(12.5)
+                                .color(p.muted),
                         );
                         if let Some(error) = &view.error {
                             ui.colored_label(p.accent, error);
@@ -226,11 +226,8 @@ impl MarkdownApp {
                         ui.separator();
                         let ready = view.text.is_some();
                         if ui
-                            .add_enabled(ready, egui::Button::new("Restore This Version"))
-                            .on_hover_text(
-                                "Replace the editor text. The current text is kept \
-                                 in the history first.",
-                            )
+                            .add_enabled(ready, egui::Button::new(t!("history-restore")))
+                            .on_hover_text(t!("history-restore.hint"))
                             .clicked()
                         {
                             restore = view.text.clone();
@@ -261,7 +258,7 @@ impl MarkdownApp {
         // Restored text is not counted as words typed this session.
         self.external_load = true;
         self.update_modified_state();
-        self.sync_notice = Some("↺ Restored an earlier version".to_string());
+        self.sync_notice = Some(format!("↺ {}", t!("history-restored")));
     }
 }
 

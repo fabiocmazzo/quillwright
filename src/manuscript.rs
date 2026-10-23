@@ -43,19 +43,6 @@ pub fn reading_minutes(words: usize) -> usize {
     words.div_ceil(250)
 }
 
-/// Thousands separators for display: 12345 -> "12,345".
-pub fn group(n: usize) -> String {
-    let digits = n.to_string();
-    let mut out = String::new();
-    for (i, ch) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(ch);
-    }
-    out
-}
-
 /// First Markdown heading, or a readable version of the file name.
 pub fn title(text: &str, path: &Path) -> String {
     text.lines()
@@ -466,8 +453,8 @@ mod tests {
             title("#hashtag", Path::new("x/maria_silva.md")),
             "Maria Silva"
         );
-        assert_eq!(group(0), "0");
-        assert_eq!(group(1234567), "1,234,567");
+        assert_eq!(crate::i18n::group(0), "0");
+        assert_eq!(crate::i18n::group(1234567), "1,234,567");
         assert_eq!(reading_minutes(1), 1);
         assert_eq!(reading_minutes(500), 2);
     }

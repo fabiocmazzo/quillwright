@@ -25,10 +25,14 @@ yet.
 
 ## Ground rules
 
-- **English only** in code, comments, UI text (including the labels in `kind.toml`), docs,
-  and commit messages. Project templates are in English, and a kind may add other
-  languages as language folders (`assets/kinds/legal/pt-BR/`); every built-in kind must
-  have `en`. The author's *manuscript* can be in any language.
+- **English only** in code, comments, docs, and commit messages. UI text is written in
+  English as Fluent messages (`assets/locales/en/quillwright.ftl`, and each kind's
+  `assets/kinds/<id>/locales/en.ftl`), never as string literals in code, and translated
+  in the other language folders (see "Interface language" below). When you add or change
+  a message, update every language; the tests fail when one is missing. Project templates
+  are in English, and a kind may add other languages as language folders
+  (`assets/kinds/legal/pt-BR/`); every built-in kind must have `en`. The author's
+  *manuscript* can be in any language.
 - **Plain Markdown, no lock-in.** Never add a manifest, database, or hidden metadata to a
   writing project. Everything the app shows is derived from the files on disk.
 - **Never lose or silently overwrite the author's text.** Saves are atomic and refuse to
@@ -54,7 +58,7 @@ yet.
 ```bash
 cargo run                                # debug build
 cargo run --release -- path/to/file.md   # open a file directly
-cargo test                               # 97 unit tests, about 1 s
+cargo test                               # 104 unit tests, about 1 s
 cargo fmt && cargo clippy --all-targets --locked -- -D warnings
 packaging/linux/build.sh 0.5.0           # AppImage + .tar.gz in dist/ (after a release build)
 packaging/linux/install-local.sh         # install the release build, menu entry, and icon in ~/.local
@@ -86,6 +90,8 @@ XDG_CONFIG_HOME=/tmp/qw/cfg XDG_DATA_HOME=/tmp/qw/data cargo run -- /tmp/qw/book
 | `src/workspace.rs` | Menus, manuscript sidebar, status bar, home screen, the page, focus mode, keyboard shortcut list (`SHORTCUTS`) |
 | `src/editor.rs` | Custom editor: edits the Markdown *source* while displaying a styled *projection*; selection, undo, IME, navigation |
 | `src/live_preview.rs` | Builds the styled projection (hides syntax except on the active line) and maps display offsets to source offsets |
+| `src/i18n.rs` | Interface language: the `t!` macro, `LANGUAGES`, Fluent bundles from `assets/locales/` and the kinds' `locales/`, system locale negotiation, digit grouping (`group`) |
+| `assets/locales/<lang>/quillwright.ftl` | The app's interface texts, one Fluent file per language (`en` is the source) |
 | `src/kinds.rs` | Project kinds: `Kind` (one per kind and language) from `assets/kinds/<id>/kind.toml` merged with `<id>/<lang>/kind.toml` (folders, labels, assistant context files, actions, prompts), its embedded template, `detect`, `choices`, `languages` |
 | `src/manuscript.rs` | Project index: the kind's documents (chapters) and sheets (characters), notes, titles, word counts, outline, new document/sheet files |
 | `src/project.rs` | New Project: copies the kind's template; opening folders |
@@ -114,7 +120,7 @@ XDG_CONFIG_HOME=/tmp/qw/cfg XDG_DATA_HOME=/tmp/qw/data cargo run -- /tmp/qw/book
 | `src/system_theme.rs` | The system's light or dark mode: from winit on Windows and macOS; on Linux, where winit does not know it, from the desktop portal's `color-scheme` (zbus, on a thread, following changes) |
 | `src/fonts.rs` | Bundled fonts (Literata, Atkinson Hyperlegible) and system font fallback |
 | `src/process.rs` | `command()`: `std::process::Command` without a console window on Windows; `user_program()`: the user's own programs, through `flatpak-spawn --host` inside a Flatpak |
-| `assets/kinds/<id>/` | A project kind (`novel`, `legal`): the shared `kind.toml`, and per language (`en/`, `pt-BR/`) a `kind.toml` and the `template/` copied by New Project. Everything here is embedded (see `build.rs`) |
+| `assets/kinds/<id>/` | A project kind (`novel`, `legal`): the shared `kind.toml`, per template language (`en/`, `pt-BR/`) a `kind.toml` and the `template/` copied by New Project, and `locales/<lang>.ftl` with the kind's interface texts. Everything here is embedded (see `build.rs`) |
 | `assets/fonts/`, `assets/icon/` | Embedded fonts and the app icon (SVG source plus generated PNG/ICO) |
 | `assets/dictionaries/` | The bundled en_US Hunspell dictionary (SCOWL, from LibreOffice) and its copyright notice |
 | `packaging/`, `.github/workflows/` | Release packaging scripts and CI / release workflows. `packaging/linux/` has the `.desktop` and AppStream MetaInfo files, named after the app id; `packaging/winget/` and `packaging/homebrew/` hold the winget manifests and the Homebrew cask (updated by hand each release) |
@@ -188,19 +194,48 @@ languages share; each language folder (`en/`, `pt-BR/`) has a `kind.toml` merged
 as `detect` and `[[assistant.context]]`) and the `template/` that New Project copies.
 `build.rs` lists every file there, so adding a kind or language needs no code change.
 `kinds::all()` has one `Kind` per kind and language (Novel first, `en` first);
-`kinds::detect` picks the first whose `detect` paths exist, else Novel. `MarkdownApp.kind` is
+`kinds::detect` picks the first whose `detect` paths exist, else Novel. Interface texts of a
+kind are Fluent messages in `<id>/locales/` (see "Interface language"). `MarkdownApp.kind` is
 set with each index rebuild. `manuscript::Index` has `documents` and `sheets` (a novel's
 chapters and characters). The test `builtin_kinds_load_and_are_complete` checks every
-variant, including that a new project of it is detected as itself. Still novel-specific in
-code: export (images in `chapters/`, the whole project, A5), the shortcut list, and the home
-screen tagline. Design and next phases: `docs/project-kinds.md`.
+variant, including that a new project of it is detected as itself. Still novel-specific: export (images in `chapters/`, the whole project, A5), the shortcut
+list ("New chapter"), and the home screen tagline. Design and next phases: `docs/project-kinds.md`.
+
+### Interface language
+
+`src/i18n.rs` holds one Fluent bundle per entry of `LANGUAGES` (`en`, `pt-BR`, `es`,
+`zh-CN`): the app's `assets/locales/<lang>/quillwright.ftl` plus every kind's
+`locales/<lang>.ftl`. `t!("key")` or `t!("key", count = n, words = i18n::group(n))` looks a
+message up in the current language, then English, then returns the key; `key.attr` reads
+an attribute (`.hint` for tooltips). Numbers passed as `count` choose plural forms; pass
+displayed numbers through `i18n::group` or `workspace::words`. Isolation marks are off
+(fonts draw them as boxes). The language is `config.view.language`, or the system's
+(`sys_locale`) when empty, set at startup (not in tests, which stay English) and from View
+→ Interface Language, which also rebuilds the index so cached texts follow. CJK text needs
+no bundled font: eframe's system font provider falls back to the installed ones.
+
+A kind's interface texts are messages starting with its id: `novel`, `novel-description`,
+`novel-documents` (and `-one` with a `.gender` attribute, `-count`, `-new`, `-new-menu`,
+`-empty`, `-first`), `novel-sheets-sent`, `novel-action-<id>` with `.hint`, and
+`novel-context-<heading>`. `Section`, `Research`, `Action`, and `ContextFile` look them up
+(`label()`, `noun()`, `count(n)`, ...). `kind.toml` keeps only structure and the
+assistant's prompts, which stay in English (they tell the model to answer in the
+manuscript's language), plus `singular`/`plural` for the prompt's wording. Messages that
+put a kind's noun in a sentence receive `$document` and `$gender`, so Portuguese and
+Spanish can choose "no capítulo" or "na peça".
+
+To add a language: copy `assets/locales/en/` and each kind's `locales/en.ftl`, translate
+them, and add an entry to `LANGUAGES` (its name in that language and its digit group
+separator). The UI language is not the book's language: the spelling dictionary and export
+(`book.rs` "Contents") follow `metadata.yaml`.
 
 ### Assistant
 
 The prompt contains the chapter with `⟦CURSOR⟧` or `⟦SELECTION START⟧`/`⟦SELECTION END⟧`
 markers, the kind's guide (`AGENT.md`) and context files (`world-rules.md`), and the sheets
-whose title is named in the chapter. The preamble, the writing actions (label, task, output
-format, result kind), and these notes come from `kind.toml`; only **Ask** is in code. All
+whose title is named in the chapter. The preamble, the writing actions (id, task, output
+format, result kind), and these notes come from `kind.toml`, and the action labels from the
+kind's `locales/`; only **Ask** is in code. All
 of it is truncated or windowed for size. `Job::run` streams stdout and stderr from any command
 and supports cancel; export reuses it. Replacing a selection re-finds the original passage if
 the buffer moved, and refuses when the passage is ambiguous.
@@ -377,7 +412,11 @@ with A4 defaults, and import from Word.
    future-incompatibility warning on macOS. When upgrading egui again, remember that the
    custom editor relies on egui text internals (`Galley`, `CCursorRange`, cursor movement,
    IME events), so expect API changes and re-run the editor tests on all three OS modes.
-10. **Clean up the md-echo leftovers** listed above, and consider splitting `main.rs`
+10. **Interface translations:** have native speakers review the Portuguese, Spanish, and
+    Chinese texts (they were written by an agent), and translate the website and README.
+    Chinese word counts split on spaces, which undercounts Chinese text; counting CJK
+    characters would read better.
+11. **Clean up the md-echo leftovers** listed above, and consider splitting `main.rs`
     (find/replace and lint/format tools could move to their own modules).
 
 ## Known limitations (user-facing)

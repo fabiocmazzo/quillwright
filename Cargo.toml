@@ -16,6 +16,7 @@ include = [
     "/assets/icon/**",
     "/assets/dictionaries/**",
     "/assets/kinds/**",
+    "/assets/locales/**",
     "/build.rs",
     "/docs/config.example.toml",
     "/README.md",
@@ -67,6 +68,15 @@ unicode-normalization = "0.1"
 # Compressing the PDF text cache (pure Rust backend, already in the build).
 flate2 = "1"
 base64 = "0.22"
+# The interface language: Fluent messages (assets/locales/), negotiated from the system
+# locale. unic-langid and sys-locale are already in the build.
+fluent-bundle = "0.16"
+unic-langid = "0.9"
+sys-locale = "0.3"
+
+[dev-dependencies]
+# Listing the messages of each language in the i18n tests (already in the build).
+fluent-syntax = "0.12"
 
 [[bin]]
 name = "quillwright"

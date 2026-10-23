@@ -1,5 +1,6 @@
 //! The PDF viewer inside the Reference panel: pages stacked vertically, rendered on
 //! demand (see `reference::pdf`), with page navigation, zoom, and search.
+use crate::i18n::t;
 use crate::{
     reference::{
         pdf::{self, Key},
@@ -240,9 +241,9 @@ impl PdfView {
                     painter.image(texture.id(), rect, uv, Color32::WHITE);
                 } else {
                     let text = if self.failed.contains(&page) {
-                        "This page could not be shown.".to_string()
+                        t!("pdf-page-failed")
                     } else {
-                        format!("Page {}", page + 1)
+                        t!("pdf-page-number", page = page + 1)
                     };
                     painter.text(
                         rect.center(),
@@ -368,9 +369,9 @@ impl PdfView {
             .trim()
             .to_string();
         let pages = if start.0 == end.0 {
-            format!("p. {}", start.0 + 1)
+            t!("search-page", page = start.0 + 1)
         } else {
-            format!("pp. {}–{}", start.0 + 1, end.0 + 1)
+            t!("pdf-pages", first = start.0 + 1, last = end.0 + 1)
         };
         (!text.is_empty()).then_some((text, pages))
     }
@@ -526,53 +527,61 @@ impl PdfView {
         }
         let searched_text = self.texts.iter().flatten().any(|t| !t.is_empty());
         if !reading && !searched_text {
-            return "This PDF has no text to search.".into();
+            return t!("pdf-no-text");
         }
         let more = if reading {
-            format!(" · reading {}%", ready * 100 / count)
+            format!(" · {}", t!("pdf-reading", percent = ready * 100 / count))
         } else {
             String::new()
         };
-        match (self.selected, self.matches.len()) {
-            (_, 0) => format!("No matches{more}"),
+        let status = match (self.selected, self.matches.len()) {
+            (_, 0) => t!("pdf-no-matches"),
             (Some(i), n) => {
                 let plus = if n >= MAX_MATCHES { "+" } else { "" };
-                format!("{} of {n}{plus}{more}", i + 1)
+                t!(
+                    "pdf-match-of",
+                    current = i + 1,
+                    total = format!("{n}{plus}")
+                )
             }
-            (None, n) => format!("{n} matches{more}"),
-        }
+            (None, n) => t!("pdf-matches", count = n),
+        };
+        format!("{status}{more}")
     }
 
     // ----- Toolbars ------------------------------------------------------
 
     fn toolbar(&mut self, ui: &mut Ui, p: &theme::Palette, count: usize) {
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Page").size(12.5).color(p.muted));
+            ui.label(RichText::new(t!("pdf-page")).size(12.5).color(p.muted));
             let mut page = self.current + 1;
             if ui
                 .add(DragValue::new(&mut page).range(1..=count).speed(0.1))
-                .on_hover_text("Type a page number, or drag")
+                .on_hover_text(t!("pdf-page.hint"))
                 .changed()
             {
                 self.jump = Some((page.saturating_sub(1), 0.0));
             }
             ui.label(
-                RichText::new(format!("of {count}"))
+                RichText::new(t!("pdf-page-count", count = count))
                     .size(12.5)
                     .color(p.muted),
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if quiet(ui, "+", p).on_hover_text("Zoom in").clicked() {
+                if quiet(ui, "+", p).on_hover_text(t!("pdf-zoom-in")).clicked() {
                     self.zoom = (self.zoom * 1.25).min(MAX_ZOOM);
                 }
                 let percent = format!("{:.0}%", self.zoom * 100.0);
                 if quiet(ui, &percent, p)
-                    .on_hover_text("Fit the page to the panel")
+                    .on_hover_text(t!("pdf-zoom-fit"))
                     .clicked()
                 {
                     self.zoom = 1.0;
                 }
-                if quiet(ui, "−", p).on_hover_text("Zoom out").clicked() {
+                if quiet(ui, "−", p)
+                    .on_hover_text(t!("pdf-zoom-out"))
+                    .clicked()
+                {
                     self.zoom = (self.zoom / 1.25).max(MIN_ZOOM);
                 }
             });
@@ -584,7 +593,7 @@ impl PdfView {
             let width = (ui.available_width() - 64.0).max(80.0);
             let response = ui.add(
                 TextEdit::singleline(&mut self.query)
-                    .hint_text("Find in this PDF")
+                    .hint_text(t!("pdf-find"))
                     .desired_width(width),
             );
             if std::mem::take(&mut self.focus_search) {
@@ -601,14 +610,14 @@ impl PdfView {
             let any = !self.matches.is_empty();
             if ui
                 .add_enabled(any, Button::new("‹").frame(false))
-                .on_hover_text("Previous match (Shift+Enter)")
+                .on_hover_text(format!("{} (Shift+Enter)", t!("pdf-previous")))
                 .clicked()
             {
                 self.step(false);
             }
             if ui
                 .add_enabled(any, Button::new("›").frame(false))
-                .on_hover_text("Next match (Enter)")
+                .on_hover_text(format!("{} (Enter)", t!("pdf-next")))
                 .clicked()
             {
                 self.step(true);
